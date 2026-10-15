@@ -16,3 +16,12 @@ The page does **not** scrape Facebook or automatically search every two hours. A
 
 ## Privacy
 Saved leads stay in the browser's localStorage until cleared. Exported CSV files are stored wherever the user saves them. Do not put personal information in a public repository.
+
+
+## Stage 3.1 — Private ingest server (foundation, not deployed)
+- `scripts/ingest-api.mjs` accepts authenticated `POST /api/ingest` using `PRIVATE_LEADS_TOKEN`.
+- Set `PRIVATE_LEADS_FILE` to a private data path outside public version control. The service binds to `127.0.0.1:8788` by default.
+- Send JSON `{"source":"facebook-page","pageId":"1234","leads":[{"id":"101","job":"Hiring developer","post":"https://www.facebook.com/example/posts/101"}]}`.
+- `scripts/search.mjs` can send results to `PRIVATE_LEADS_ENDPOINT` with `PRIVATE_LEADS_TOKEN` over HTTPS. For deployed GitHub Actions, use a separately operated HTTPS reverse proxy with authentication and an attached durable volume/database; do **not** expose loopback directly.
+- Local JSON persistence does not by itself guarantee durable storage across server replacement, concurrent writes, backups, or restarts on ephemeral hosts. Deployment and end-to-end remote tests are pending.
+- Do not add real contacts, bearer tokens, or credentials to this public repository. No general Facebook group search is provided.
