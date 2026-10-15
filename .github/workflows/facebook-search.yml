@@ -4,7 +4,7 @@ on:
     - cron: '17 */2 * * *'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: fb-page-job-search
   cancel-in-progress: false
@@ -16,18 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Fetch authorized Page posts
+      - name: Fetch authorized Page posts (ephemeral)
         env:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           JOB_KEYWORDS: ${{ vars.JOB_KEYWORDS }}
         run: node scripts/search.mjs
-      - name: Commit updated leads
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/leads.json
-          if ! git diff --cached --quiet; then
-            git commit -m "Update authorized Facebook job leads"
-            git push
-          fi
+      # This repository is public. Never commit or upload contact-bearing lead files.
+      # To view automated leads persistently, configure a private storage destination.
