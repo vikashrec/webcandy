@@ -1,0 +1,29 @@
+services:
+  leads-reader:
+    build: .
+    restart: unless-stopped
+    command: ["node", "scripts/leads-api.mjs"]
+    environment:
+      PRIVATE_LEADS_FILE: /var/lib/webcandy/leads.json
+      PRIVATE_LEADS_READ_TOKEN: ${PRIVATE_LEADS_READ_TOKEN:?Set a strong private read token}
+      LEADS_API_PORT: "8787"
+    volumes:
+      - webcandy-leads:/var/lib/webcandy
+    ports:
+      - "127.0.0.1:8787:8787"
+    network_mode: bridge
+  leads-ingest:
+    build: .
+    restart: unless-stopped
+    command: ["node", "scripts/ingest-api.mjs"]
+    environment:
+      PRIVATE_LEADS_FILE: /var/lib/webcandy/leads.json
+      PRIVATE_LEADS_TOKEN: ${PRIVATE_LEADS_TOKEN:?Set a strong private write token}
+      INGEST_PORT: "8788"
+    volumes:
+      - webcandy-leads:/var/lib/webcandy
+    ports:
+      - "127.0.0.1:8788:8788"
+    network_mode: bridge
+volumes:
+  webcandy-leads:
