@@ -1,0 +1,11 @@
+# Example ONLY. Configure DNS, TLS certificate issuance and firewall before deployment.
+# Replace the hostname with a domain you control.
+leads.example.com {
+    encode zstd gzip
+    @ingest path /api/ingest
+    handle @ingest {
+        reverse_proxy 127.0.0.1:8788
+    }
+    respond 404
+}
+# Reader API deliberately NOT exposed to the public Internet.
