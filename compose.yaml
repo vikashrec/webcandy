@@ -8,8 +8,10 @@ services:
       SERVICE_BIND_HOST: 0.0.0.0
       PRIVATE_LEADS_READ_TOKEN: ${PRIVATE_LEADS_READ_TOKEN:?Set a strong private read token}
       LEADS_API_PORT: "8787"
+      PRIVATE_BACKUP_DIR: /var/backups/webcandy
     volumes:
       - webcandy-leads:/var/lib/webcandy
+      - webcandy-backups:/var/backups/webcandy
     ports:
       - "127.0.0.1:8787:8787"
     network_mode: bridge
@@ -29,3 +31,4 @@ services:
     network_mode: bridge
 volumes:
   webcandy-leads:
+  webcandy-backups:
