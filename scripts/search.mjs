@@ -1,3 +1,4 @@
+import {saveLocalLeads} from './storage.mjs';
 const token=process.env.FB_PAGE_ACCESS_TOKEN;
 const pageId=process.env.FB_PAGE_ID;
 const version=process.env.FB_API_VERSION||'v23.0';
@@ -22,6 +23,8 @@ export async function collect(fetcher=fetch){
  const byId=new Map();
  for(const p of json.data){const lead=extractLead(p);if(lead)byId.set(lead.id,lead)}
  const result=[...byId.values()].sort((a,b)=>b.savedAt.localeCompare(a.savedAt)).slice(0,1000);
+ const privateFile=process.env.PRIVATE_LEADS_FILE;
+ if(privateFile){const count=await saveLocalLeads(result,privateFile);console.log('Saved '+result.length+' matching leads; '+count+' unique leads in private local storage');return;}
  const storeUrl=process.env.PRIVATE_LEADS_ENDPOINT;
  const storeToken=process.env.PRIVATE_LEADS_TOKEN;
  if(storeUrl){
