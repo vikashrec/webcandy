@@ -11,6 +11,14 @@ function authorized(given, expected) {
 export function createLeadServer({token=process.env.PRIVATE_LEADS_READ_TOKEN,file=process.env.PRIVATE_LEADS_FILE}={}) {
   if (!token || !file) throw new Error('PRIVATE_LEADS_READ_TOKEN and PRIVATE_LEADS_FILE required');
   return createServer(async(req,res)=>{
+    if(req.url==='/' && req.method==='GET') {
+      try {
+        const html=await readFile(new URL('../index.html',import.meta.url));
+        res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'",'X-Content-Type-Options':'nosniff'});
+        res.end(html);
+      } catch {res.writeHead(500);res.end('Page unavailable');}
+      return;
+    }
     res.setHeader('Cache-Control','no-store');
     res.setHeader('X-Content-Type-Options','nosniff');
     if(req.url!=='/api/leads' || req.method!=='GET') {
