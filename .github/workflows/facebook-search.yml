@@ -33,6 +33,7 @@ jobs:
         env:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
+          FB_API_VERSION: ${{ vars.FB_API_VERSION }}
           PRIVATE_LEADS_ENDPOINT: ${{ vars.PRIVATE_LEADS_ENDPOINT }}
           PRIVATE_LEADS_TOKEN: ${{ secrets.PRIVATE_LEADS_TOKEN }}
         run: node scripts/integration-check.mjs
@@ -42,6 +43,7 @@ jobs:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           JOB_KEYWORDS: ${{ vars.JOB_KEYWORDS }}
+          FB_API_VERSION: ${{ vars.FB_API_VERSION }}
           PRIVATE_LEADS_ENDPOINT: ${{ vars.PRIVATE_LEADS_ENDPOINT }}
           PRIVATE_LEADS_TOKEN: ${{ secrets.PRIVATE_LEADS_TOKEN }}
         run: node scripts/search.mjs
