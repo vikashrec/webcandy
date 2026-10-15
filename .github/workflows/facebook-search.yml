@@ -3,6 +3,12 @@ on:
   schedule:
     - cron: '17 */2 * * *'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Use sample data only (no Facebook API request)'
+        required: true
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -16,7 +22,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Fetch authorized Page posts (ephemeral)
+      - name: Run automated tests
+        run: npm test
+      - name: Offline sample dry run
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        run: node scripts/dry-run.mjs
+      - name: Collect authorized Page posts
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false) }}
         env:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
@@ -24,5 +36,3 @@ jobs:
           PRIVATE_LEADS_ENDPOINT: ${{ vars.PRIVATE_LEADS_ENDPOINT }}
           PRIVATE_LEADS_TOKEN: ${{ secrets.PRIVATE_LEADS_TOKEN }}
         run: node scripts/search.mjs
-      # This repository is public. Never commit or upload contact-bearing lead files.
-      # To view automated leads persistently, configure a private storage destination.
