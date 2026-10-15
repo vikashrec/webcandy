@@ -21,6 +21,8 @@ jobs:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           JOB_KEYWORDS: ${{ vars.JOB_KEYWORDS }}
+          PRIVATE_LEADS_ENDPOINT: ${{ vars.PRIVATE_LEADS_ENDPOINT }}
+          PRIVATE_LEADS_TOKEN: ${{ secrets.PRIVATE_LEADS_TOKEN }}
         run: node scripts/search.mjs
       # This repository is public. Never commit or upload contact-bearing lead files.
       # To view automated leads persistently, configure a private storage destination.
