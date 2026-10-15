@@ -1,0 +1,16 @@
+import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
+import {resolve,join} from 'node:path';
+import {createHash} from 'node:crypto';
+const source=process.env.PRIVATE_LEADS_FILE;
+const directory=process.env.PRIVATE_BACKUP_DIR;
+if(!source||!directory)throw Error('PRIVATE_LEADS_FILE and PRIVATE_BACKUP_DIR required');
+const data=await readFile(resolve(source));
+const parsed=JSON.parse(data.toString('utf8'));
+if(!Array.isArray(parsed))throw Error('Lead store must be an array');
+const output=resolve(directory);
+await mkdir(output,{recursive:true,mode:0o700});
+const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+const filename='leads-'+stamp+'-'+createHash('sha256').update(data).digest('hex').slice(0,12)+'.json';
+const target=join(output,filename);
+await writeFile(target,data,{flag:'wx',mode:0o600});
+console.log('Backup completed: '+filename+' ('+parsed.length+' records)');
