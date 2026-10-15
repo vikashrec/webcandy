@@ -1,9 +1,10 @@
 import {fileURLToPath} from 'node:url';
 export function checkIntegration(env=process.env) {
  const missing=[];
- for(const key of ['FB_PAGE_ID','FB_PAGE_ACCESS_TOKEN','PRIVATE_LEADS_ENDPOINT','PRIVATE_LEADS_TOKEN']) if(!env[key]?.trim())missing.push(key);
+ for(const key of ['FB_PAGE_ID','FB_PAGE_ACCESS_TOKEN']) if(!env[key]?.trim())missing.push(key);
  const errors=[];
  if(env.FB_PAGE_ID && !/^[0-9]{1,30}$/.test(env.FB_PAGE_ID))errors.push('FB_PAGE_ID must be numeric');
+ if(env.PRIVATE_LEADS_ENDPOINT && !env.PRIVATE_LEADS_TOKEN)errors.push('PRIVATE_LEADS_TOKEN required with PRIVATE_LEADS_ENDPOINT');
  if(env.PRIVATE_LEADS_ENDPOINT){
    try{const url=new URL(env.PRIVATE_LEADS_ENDPOINT);if(url.protocol!=='https:'||url.username||url.password)errors.push('PRIVATE_LEADS_ENDPOINT must be HTTPS without embedded credentials')}
    catch{errors.push('PRIVATE_LEADS_ENDPOINT must be a valid URL')}
