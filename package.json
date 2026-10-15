@@ -1,0 +1,12 @@
+{
+  "name": "webcandy-fb-job-search",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "search": "node scripts/search.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
