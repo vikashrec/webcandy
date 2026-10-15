@@ -35,14 +35,7 @@ jobs:
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           PRIVATE_LEADS_ENDPOINT: ${{ vars.PRIVATE_LEADS_ENDPOINT }}
           PRIVATE_LEADS_TOKEN: ${{ secrets.PRIVATE_LEADS_TOKEN }}
-        run: |
-          if [[ -n "$FB_PAGE_ACCESS_TOKEN" && -n "$FB_PAGE_ID" && -n "$PRIVATE_LEADS_ENDPOINT" && -n "$PRIVATE_LEADS_TOKEN" ]]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "Authorized Page collection and private storage configured."
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Collection skipped: Page access and/or private storage not configured."
-          fi
+        run: node scripts/integration-check.mjs
       - name: Collect authorized Page posts
         if: ${{ steps.preflight.outputs.ready == 'true' }}
         env:
