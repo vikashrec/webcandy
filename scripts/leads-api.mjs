@@ -41,5 +41,5 @@ export function createLeadServer({token=process.env.PRIVATE_LEADS_READ_TOKEN,fil
 if(process.argv[1] && import.meta.url===new URL('file://'+process.argv[1]).href){
   const server=createLeadServer();
   const port=Number(process.env.LEADS_API_PORT||8787);
-  server.listen(port,'127.0.0.1',()=>console.log('Private leads API listening on 127.0.0.1:'+port));
+  server.listen(port,process.env.SERVICE_BIND_HOST||'127.0.0.1',()=>console.log('Private leads API listening on 127.0.0.1:'+port));
 }
