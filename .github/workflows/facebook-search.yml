@@ -27,8 +27,24 @@ jobs:
       - name: Offline sample dry run
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
         run: node scripts/dry-run.mjs
-      - name: Collect authorized Page posts
+      - name: Check authorized collection configuration
+        id: preflight
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false) }}
+        env:
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
+          FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
+          PRIVATE_LEADS_ENDPOINT: ${{ vars.PRIVATE_LEADS_ENDPOINT }}
+          PRIVATE_LEADS_TOKEN: ${{ secrets.PRIVATE_LEADS_TOKEN }}
+        run: |
+          if [[ -n "$FB_PAGE_ACCESS_TOKEN" && -n "$FB_PAGE_ID" && -n "$PRIVATE_LEADS_ENDPOINT" && -n "$PRIVATE_LEADS_TOKEN" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Authorized Page collection and private storage configured."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Collection skipped: Page access and/or private storage not configured."
+          fi
+      - name: Collect authorized Page posts
+        if: ${{ steps.preflight.outputs.ready == 'true' }}
         env:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
