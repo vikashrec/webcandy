@@ -1,3 +1,4 @@
+import {appendFile} from 'node:fs/promises';
 import {saveLocalLeads} from './storage.mjs';
 const token=process.env.FB_PAGE_ACCESS_TOKEN;
 const pageId=process.env.FB_PAGE_ID;
@@ -29,6 +30,8 @@ export async function collect(fetcher=fetch){
  const byId=new Map();
  for(const p of json.data){const lead=extractLead(p);if(lead)byId.set(lead.id,lead)}
  const result=[...byId.values()].sort((a,b)=>b.savedAt.localeCompare(a.savedAt)).slice(0,1000);
+ const summary=process.env.GITHUB_STEP_SUMMARY;
+ if(summary){await appendFile(summary,`## Authorized Page Collection\n\n- Posts reviewed: ${json.data.length}\n- Requirement-like matches: ${result.length}\n- Data source: authorized Facebook Page\n- Note: matches are not confirmed sales leads; private contact data is excluded.\n`)}
  const privateFile=process.env.PRIVATE_LEADS_FILE;
  if(privateFile){const count=await saveLocalLeads(result,privateFile);console.log('Saved '+result.length+' matching leads; '+count+' unique leads in private local storage');return;}
  const storeUrl=process.env.PRIVATE_LEADS_ENDPOINT;
