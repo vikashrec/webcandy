@@ -25,3 +25,11 @@ Saved leads stay in the browser's localStorage until cleared. Exported CSV files
 - `scripts/search.mjs` can send results to `PRIVATE_LEADS_ENDPOINT` with `PRIVATE_LEADS_TOKEN` over HTTPS. For deployed GitHub Actions, use a separately operated HTTPS reverse proxy with authentication and an attached durable volume/database; do **not** expose loopback directly.
 - Local JSON persistence does not by itself guarantee durable storage across server replacement, concurrent writes, backups, or restarts on ephemeral hosts. Deployment and end-to-end remote tests are pending.
 - Do not add real contacts, bearer tokens, or credentials to this public repository. No general Facebook group search is provided.
+
+
+## Stage 3.3 — Container deployment foundation (not deployed)
+- `Dockerfile` runs the Node services as a non-root user; `compose.yaml` shares a named `webcandy-leads` volume.
+- Both container services bind internally to 0.0.0.0 but publish **only** on host 127.0.0.1 (ports 8787 read, 8788 write). Do not publish either port to the internet directly.
+- On a dedicated server, set strong different `PRIVATE_LEADS_READ_TOKEN` and `PRIVATE_LEADS_TOKEN` in a private server-side environment (never commit values), then run `docker compose config` and `docker compose up -d --build` after approval.
+- `PRIVATE_LEADS_ENDPOINT` for scheduled GitHub Actions must eventually be a verified HTTPS endpoint with reverse proxy, scoped authentication, and network controls. A loopback-only Docker service is **not** reachable from GitHub Actions.
+- The JSON store and shared volume are a development foundation, **not** a multi-writer cloud database. Backups, locking/transactions, TLS reverse proxy, operations monitoring, secure deployment and disaster recovery are still pending.
