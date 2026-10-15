@@ -33,3 +33,10 @@ Saved leads stay in the browser's localStorage until cleared. Exported CSV files
 - On a dedicated server, set strong different `PRIVATE_LEADS_READ_TOKEN` and `PRIVATE_LEADS_TOKEN` in a private server-side environment (never commit values), then run `docker compose config` and `docker compose up -d --build` after approval.
 - `PRIVATE_LEADS_ENDPOINT` for scheduled GitHub Actions must eventually be a verified HTTPS endpoint with reverse proxy, scoped authentication, and network controls. A loopback-only Docker service is **not** reachable from GitHub Actions.
 - The JSON store and shared volume are a development foundation, **not** a multi-writer cloud database. Backups, locking/transactions, TLS reverse proxy, operations monitoring, secure deployment and disaster recovery are still pending.
+
+## Stage 3.5 — HTTPS and backups (foundation only)
+- `deploy/Caddyfile.example` shows an HTTPS gateway for **write-only** `/api/ingest`; replace the sample hostname and validate firewall/TLS and server-side bearer-token controls. It is not deployed.
+- `scripts/backup.mjs` copies valid JSON lead data to `PRIVATE_BACKUP_DIR`; `scripts/verify-backup.mjs <file>` checks file structure. Do not store backups in Git or on publicly served paths.
+- Backups on the same disk/server do **not** protect against disk loss or server deletion. Configure encrypted off-server versioned backups, retention, integrity checks, and a tested restore procedure before production.
+- The current JSON read-modify-write store is not concurrency-safe. Do not run multiple ingestion writers or claim database-level durability; migration to a transactional database remains required.
+- The API endpoint must be reachable over trusted HTTPS from GitHub Actions, and the token must be stored in GitHub Actions secrets. None of that connectivity is active yet.
