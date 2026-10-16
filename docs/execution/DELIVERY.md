@@ -86,7 +86,7 @@ or historical backup copies. Operator filesystem/database access is trusted.
 No known failing test remains in the received development scope. “READY FOR OWNER
 AUDIT” means reviewable local development evidence, not production readiness or
 completion of all proposed architecture modules. No real collection, external
-messages, paid API calls, ads, purchases, lead resale, deployment or merge occurred.
+messages, paid API calls, ads, purchases, lead resale, production deployment or merge was initiated. The existing Vercel/GitHub integration automatically created a non-production Preview on push; GitHub deployment metadata explicitly sets `production_environment=false`. That static preview is not verification of the workforce API, worker or database. No deployment command was run.
 Those actions remain subject to owner approval. The saved onboarding startup draft
 now includes the new mock worker and health checks; saving it does not publish a
 cloud environment or apply infrastructure changes.
@@ -94,3 +94,10 @@ cloud environment or apply infrastructure changes.
 Review API.md, DEVELOPMENT.md, REQUIREMENTS.md, evidence logs and the draft PR.
 The final commit and PR are reported with the handoff; evidence/SHA256SUMS verifies
 the committed evidence files. CI is reported separately from these local counts.
+
+## Handoff references
+
+Implementation/evidence commit: `c05ea41abc4c4e62903d017997e96c44c4702d5b`.
+Draft review: https://github.com/vikashrec/webcandy/pull/5 (base `mission/wc-qa-02`).
+Push CI: https://github.com/vikashrec/webcandy/actions/runs/38950554769 .
+The later handoff commit changes only documentation and does not alter the tested application.
