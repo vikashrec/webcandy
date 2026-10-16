@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "scope": "synthetic development only",
+  "imageId": "sha256:89e806c15565c16d31cf1d3420cfcad5dfcdd6be67350efc4dc582d77d9b1865",
+  "checks": [
+    "compose validates",
+    "non-root read-only web",
+    "worker health",
+    "independently approved scheduled mock campaign",
+    "one receipt after web restart",
+    "persistent shared volume",
+    "private files excluded"
+  ],
+  "externalRequests": 0
+}

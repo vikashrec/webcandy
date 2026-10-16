@@ -7,8 +7,10 @@
     "search": "node scripts/search.mjs",
     "workforce:seed": "node src/workforce/seed.mjs",
     "workforce:start": "node src/workforce/server.mjs",
+    "workforce:worker": "node src/workforce/worker.mjs",
     "test:browser": "node --test e2e/browser.mjs",
-    "test:containers": "node --test e2e/containers.mjs"
+    "test:containers": "node --test e2e/containers.mjs",
+    "test:workforce-containers": "node --test e2e/workforce-containers.mjs"
   },
   "engines": {
     "node": ">=24"

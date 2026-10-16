@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "health": {
+    "ok": true,
+    "database": "ok",
+    "initialized": true,
+    "schema": 1,
+    "mode": "synthetic-development",
+    "externalDispatch": false,
+    "workerActive": true
+  },
+  "authenticatedStatus": 200,
+  "tenant": "alpha",
+  "organizationAvailable": true,
+  "workerStatus": 200
+}
