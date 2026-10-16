@@ -89,6 +89,10 @@
     {
       "file": "type-reproduction.json",
       "sha256": "2ad30bf2fcd577192a3598124533ec402c75a391ae0a51babb544e7eee99b17b"
+    },
+    {
+      "file": "remote-ci.json",
+      "sha256": "ac78cb88fd8a3a366ca1aecfb1a53613061cb7afafecfdb9d0dc064ef9ace439"
     }
   ]
 }
