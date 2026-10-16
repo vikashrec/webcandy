@@ -21,3 +21,14 @@ test('persists across repeated imports', async () => {
     assert.equal(rows.find(x=>x.id==='1').job,'Updated');
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('concurrent in-process imports preserve every unique lead', async () => {
+  const dir=await mkdtemp(join(tmpdir(),'webcandy-concurrent-'));
+  try {
+    const file=join(dir,'leads.json');
+    await Promise.all(Array.from({length:20},(_,i)=>saveLocalLeads([{id:String(i),job:'Synthetic '+i}],file)));
+    const rows=JSON.parse(await readFile(file,'utf8'));
+    assert.equal(rows.length,20);
+    assert.equal(new Set(rows.map(row=>row.id)).size,20);
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});

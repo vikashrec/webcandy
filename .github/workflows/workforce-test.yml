@@ -1,0 +1,38 @@
+name: Workforce development regression
+on:
+  push:
+    branches: [mission/wc-e2e-01, mission/wc-qa-02]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  development:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          npm test | tee test-results/backend.txt
+      - shell: bash
+        run: |
+          set -o pipefail
+          npm run test:browser | tee test-results/browser.txt
+      - shell: bash
+        run: |
+          set -o pipefail
+          npm run test:containers | tee test-results/containers.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workforce-browser-evidence
+          path: test-results/
+          if-no-files-found: ignore

@@ -1,5 +1,10 @@
-import {readFile, writeFile, mkdir, rename} from 'node:fs/promises';
+import {readFile, writeFile, mkdir, rename, unlink} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
+import {randomUUID} from 'node:crypto';
+
+// Serialize writes to the same file within this process. This legacy JSON adapter
+// still is not a multi-process database; the workforce uses transactional SQLite.
+const pending = new Map();
 
 export function mergeLeads(existing, incoming) {
   const byId = new Map();
@@ -19,6 +24,14 @@ export async function saveLocalLeads(incoming, path = process.env.PRIVATE_LEADS_
   if (target.includes('/.git/') || target.endsWith('/data/leads.json')) {
     throw new Error('Use a private ignored file, not the tracked demo data');
   }
+  const run = () => writeLeads(incoming, target);
+  const next = (pending.get(target) || Promise.resolve()).then(run, run);
+  pending.set(target, next);
+  try { return await next; }
+  finally { if (pending.get(target) === next) pending.delete(target); }
+}
+
+async function writeLeads(incoming, target) {
   let previous = [];
   try {
     previous = JSON.parse(await readFile(target, 'utf8'));
@@ -28,8 +41,10 @@ export async function saveLocalLeads(incoming, path = process.env.PRIVATE_LEADS_
   }
   const merged = mergeLeads(previous, incoming);
   await mkdir(dirname(target), {recursive: true, mode: 0o700});
-  const temp = target + '.tmp';
-  await writeFile(temp, JSON.stringify(merged, null, 2) + '\n', {mode: 0o600, flag: 'w'});
-  await rename(temp, target);
+  const temp = target + '.' + randomUUID() + '.tmp';
+  try {
+    await writeFile(temp, JSON.stringify(merged, null, 2) + '\n', {mode: 0o600, flag: 'wx'});
+    await rename(temp, target);
+  } catch (error) { await unlink(temp).catch(() => {}); throw error; }
   return merged.length;
 }
