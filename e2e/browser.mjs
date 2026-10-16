@@ -15,6 +15,7 @@ async function browserFixture(t) {
   const browser = await chromium.launch({headless: true, executablePath, args: ['--no-sandbox']});
   const context = await browser.newContext({viewport: {width: 1365, height: 1000}});
   const page = await context.newPage();
+  page.setDefaultTimeout(15000);
   const errors = [], external = [];
   page.on('pageerror', error => errors.push(error.message));
   await context.route('**/*', async route => {
@@ -175,4 +176,29 @@ test('QA browser: buyer form supports global, subdivision and city targeting wit
   await f.form('Create buyer').getByLabel('Include city ID').fill('patna'); await f.submit('Create buyer');
   const target = f.store.list('alpha', 'buyers').at(-1).target;
   assert.equal(target.include[0].country, 'IN'); assert.equal(target.include[0].state, 'IN-BR'); assert.equal(target.include[0].city, 'patna');
+});
+
+test('browser: company provisions team, admin delivers approved offer, team acknowledges and closes follow-up', async t => {
+  const f=await browserFixture(t),x=prepared(f);
+  await f.login('buyer@alpha.example.test');await f.tab('Company & team');
+  await f.form('Create team').getByLabel('Team name',{exact:true}).fill('Synthetic delivery team');await f.submit('Create team');
+  await f.form('Create account').getByLabel('Account email',{exact:true}).fill('portal-team@example.test');
+  await f.form('Create account').getByLabel('Initial password (14+ characters)',{exact:true}).fill('Synthetic-password-2026');
+  const team=f.service.teams(f.a.admin)[0];
+  await f.form('Create account').getByLabel('Team',{exact:true}).selectOption(team.id);
+  await f.submit('Create account');await f.submit('Assign allocation to team');
+  f.credentials.push({email:'portal-team@example.test',password:'Synthetic-password-2026'});
+  await f.signout();await f.login('reviewer@alpha.example.test');await f.tab('Catalog & offers');
+  await f.submit('Approve offer for portal delivery');await f.tab('Deliveries');
+  await f.form('Deliver to buyer portal').getByLabel('Approved offer',{exact:true}).selectOption(x.offer.id);
+  await f.submit('Deliver to buyer portal');
+  await f.signout();await f.login('portal-team@example.test');
+  assert.equal(await f.page.getByRole('button',{name:'Company & team',exact:true}).count(),0);
+  await f.tab('Deliveries');await f.submit('Accept portal delivery');
+  assert.match(await f.page.locator('#content').innerText(),/accepted/);
+  await f.tab('Follow-ups');await f.submit('Create follow-up');await f.submit('Close follow-up');
+  assert.match(await f.page.locator('#content').innerText(),/completed/);
+  await f.page.setViewportSize({width:390,height:844});
+  assert.equal(await f.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  await f.page.screenshot({path:'test-results/team-followup-mobile.png',fullPage:true});
 });

@@ -1,6 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {existsSync, writeFileSync} from 'node:fs';
+import {existsSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {dirname} from 'node:path';
 import {Store} from './database.mjs';
 import {Workforce} from './service.mjs';
 import {check} from './domain.mjs';
@@ -38,12 +39,13 @@ export function seed(store) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const file = process.env.WORKFORCE_DB || new URL('../../private-data/workforce.sqlite', import.meta.url).pathname;
-  const credentialFile = new URL('../../private-data/development-credentials.json', import.meta.url);
+  const credentialFile = process.env.WORKFORCE_CREDENTIAL_FILE || fileURLToPath(new URL('../../private-data/development-credentials.json', import.meta.url));
   check(!existsSync(credentialFile), 'Existing development credentials preserved; use existing database or explicitly choose a new isolated checkout');
   const store = new Store(file);
   try {
     const result = seed(store);
+    mkdirSync(dirname(credentialFile), {recursive:true,mode:0o700});
     writeFileSync(credentialFile, JSON.stringify(result.credentials, null, 2) + '\n', {mode: 0o600, flag: 'wx'});
-    console.log('Created two synthetic tenants. Development login credentials are in ignored private-data/development-credentials.json (mode 0600). Do not commit, publish or share this file.');
+    console.log('Created two synthetic tenants. Development login credentials were saved to the configured private credential file (mode 0600). Do not commit, publish or share this file.');
   } finally { store.close(); }
 }

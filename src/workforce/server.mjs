@@ -18,7 +18,13 @@ const actions = new Map([
   ['/buyers/match', 'match'], ['/catalog/services', 'createService'], ['/offers/draft', 'offer'],
   ['/allocations', 'allocate'], ['/campaigns', 'campaign'], ['/campaigns/approve', 'approve'],
   ['/campaigns/schedule', 'schedule'], ['/campaigns/cancel', 'cancel'], ['/outreach/dispatch', 'dispatch'],
-  ['/conversions/events', 'conversion'], ['/retention/purge', 'purge']
+  ['/conversions/events', 'conversion'], ['/retention/purge', 'purge'],
+  ['/organization', 'updateOrganization'], ['/teams', 'createTeam'], ['/teams/update', 'updateTeam'], ['/users', 'createUser'], ['/users/update', 'updateUser'],
+  ['/offers/approve', 'approveOffer'],
+  ['/allocations/assign-team', 'assignTeam'], ['/deliveries', 'deliver'], ['/deliveries/accept', 'ackDelivery'],
+  ['/followups', 'createFollowup'], ['/followups/close', 'finishFollowup'], ['/sources/renew', 'renewSource'],
+  ['/connectors/configure', 'configureConnector'], ['/connectors/run', 'runConnector'], ['/connectors/queue', 'queueConnector'],
+  ['/retention/schedule', 'queueRetention'], ['/jobs/run', 'runJobs'], ['/jobs/retry', 'retryJob']
 ]);
 async function readBody(req) {
   check(req.headers['content-type']?.split(';')[0] === 'application/json', 'JSON content type required', 415);
@@ -30,8 +36,9 @@ async function readBody(req) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'JSON object required');
   return {input, raw};
 }
-export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit = 150, ai} = {}) {
+export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit = 150, ai, publicOrigin} = {}) {
   check(store, 'Store required');
+  if (publicOrigin) { const u = new URL(publicOrigin); check(['http:', 'https:'].includes(u.protocol) && u.origin === publicOrigin && !u.username && !u.password, 'Exact public origin required'); }
   const service = new Workforce(store, {clock, ai});
   const limits = new Map();
   const server = createServer(async (req, res) => {
@@ -55,16 +62,22 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
       if (req.method === 'GET' && assets.has(path)) {
         const [file, type] = assets.get(path);
         if (path === '/legacy') res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'");
-        res.writeHead(200, {'Content-Type': type}); res.end(await readFile(new URL(file, import.meta.url))); return;
+        const content = await readFile(new URL(file, import.meta.url));
+        res.writeHead(200, {'Content-Type': type}); res.end(content); return;
       }
       if (req.method === 'GET' && path === '/health') {
         const ok = store.db.prepare('PRAGMA quick_check').get().quick_check === 'ok';
         const initialized = store.db.prepare("SELECT count(*) AS n FROM principals WHERE active=1 AND role='admin'").get().n > 0;
         return json(ok && initialized ? 200 : 503, {ok: ok && initialized, database: ok ? 'ok' : 'failed', initialized,
-          schema: 1, mode: 'synthetic-development', externalDispatch: false});
+          schema: 1, mode: 'synthetic-development', externalDispatch: false,
+          workerActive: (store.db.prepare("SELECT last_seen FROM worker_state WHERE id='mock-worker'").get()?.last_seen || 0) > clock() - 30000});
+      }
+      if (req.method === 'GET' && path === '/health/worker') {
+        const active = (store.db.prepare("SELECT last_seen FROM worker_state WHERE id='mock-worker'").get()?.last_seen || 0) > clock() - 30000;
+        return json(active ? 200 : 503, {ok: active, mode: 'mock'});
       }
       const port = server.address().port;
-      const allowedOrigins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+      const allowedOrigins = publicOrigin ? [publicOrigin] : [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
       const bearer = req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{20,200})$/)?.[1];
       const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith('wc_session='))?.slice(11);
       if (req.method !== 'GET' && req.headers.origin) check(allowedOrigins.includes(req.headers.origin), 'Origin denied', 403);
@@ -77,7 +90,7 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
           store.audit(session.actor, 'auth.login', session.actor.id);
           return session;
         });
-        res.setHeader('Set-Cookie', `wc_session=${result.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`);
+        res.setHeader('Set-Cookie', `wc_session=${result.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${publicOrigin?.startsWith('https:') ? '; Secure' : ''}`);
         return json(200, {actor: result.actor});
       }
       const webhook = path.match(/^\/api\/v1\/connectors\/([a-z0-9-]+)\/webhook$/);
@@ -120,6 +133,8 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
       if (req.method === 'GET' && path === '/api/v1/catalog/services') return json(200, service.snapshot(actor).catalog);
       if (req.method === 'GET' && path === '/api/v1/reports') return json(200, service.report(actor));
       if (req.method === 'GET' && path === '/api/v1/audit') { service.admin(actor); return json(200, store.events(actor.tenant)); }
+      if (req.method === 'GET' && ['/api/v1/users','/api/v1/teams','/api/v1/deliveries','/api/v1/followups','/api/v1/organization','/api/v1/jobs'].includes(path))
+        return json(200, service.snapshot(actor)[path.slice(8)]);
       if (req.method === 'POST' && actions.has(path.replace(/^\/api\/v1/, '')) && path.startsWith('/api/v1/')) {
         const {input, raw} = await readBody(req);
         check(!input.tenant && !input.tenantId, 'Tenant is derived from authentication', 403);
@@ -128,16 +143,16 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
         const method = actions.get(path.slice(7));
         // A cached success is never authorization. Evaluate current role before
         // consulting cache, and bind cached results to the current buyer context.
-        if (!['match', 'conversion'].includes(method)) service.admin(actor);
-        const hash = fingerprint(JSON.stringify([path, raw, actor.role, actor.buyer]));
+        if (!['match', 'conversion','createTeam','updateTeam','createUser','updateUser','assignTeam','ackDelivery','createFollowup','finishFollowup'].includes(method)) service.admin(actor);
+        const hash = fingerprint(JSON.stringify([path, raw, actor.role, actor.buyer, actor.accessRole, actor.teamId]));
         const result = store.transaction(() => {
           // Matching is a query: suppression and allocation changes must be visible
           // even if a client reuses its POST key.
-          const previous = method !== 'match' && store.db.prepare('SELECT hash,result FROM idempotency WHERE tenant=? AND actor=? AND key=?').get(actor.tenant, actor.id, key);
+          const previous = !['match','runJobs'].includes(method) && store.db.prepare('SELECT hash,result FROM idempotency WHERE tenant=? AND actor=? AND key=?').get(actor.tenant, actor.id, key);
           if (previous) { check(previous.hash === hash, 'Idempotency key conflict', 409); return JSON.parse(previous.result); }
           const value = service[method](actor, input);
           // Purge must never retain a response containing expired records.
-          if (!['purge', 'match'].includes(method)) store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?,?)').run(actor.tenant, actor.id, key, hash, JSON.stringify(value));
+          if (!['purge', 'match','runJobs'].includes(method)) store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?,?)').run(actor.tenant, actor.id, key, hash, JSON.stringify(value));
           return value;
         });
         return json(200, result);
@@ -161,8 +176,12 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
 export function start() {
   const file = process.env.WORKFORCE_DB || new URL('../../private-data/workforce.sqlite', import.meta.url).pathname;
   const store = new Store(file);
-  const server = makeServer({store});
-  server.listen(Number(process.env.WORKFORCE_PORT || 8790), '127.0.0.1', () => console.log('Workforce development server listening (loopback only, mock dispatch)'));
+  const publicOrigin = process.env.WORKFORCE_ORIGIN;
+  const host = process.env.WORKFORCE_BIND_HOST || '127.0.0.1';
+  check(['127.0.0.1','0.0.0.0'].includes(host), 'Unsupported bind host');
+  check(host === '127.0.0.1' || publicOrigin, 'WORKFORCE_ORIGIN is required for container binding');
+  const server = makeServer({store, publicOrigin});
+  server.listen(Number(process.env.WORKFORCE_PORT || 8790), host, () => console.log('Workforce development server listening; mock dispatch only.'));
   const stop = () => server.close(() => { store.close(); process.exit(0); });
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
   return {server, store};

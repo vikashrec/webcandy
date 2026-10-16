@@ -1,0 +1,41 @@
+name: webcandy-workforce-development
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.workforce
+    environment: &workforce-environment
+      WORKFORCE_DB: /var/lib/webcandy/workforce.sqlite
+      WORKFORCE_CREDENTIAL_FILE: /var/lib/webcandy/development-credentials.json
+      WORKFORCE_BIND_HOST: 0.0.0.0
+      WORKFORCE_ORIGIN: ${WORKFORCE_ORIGIN:-http://127.0.0.1:8790}
+    volumes:
+      - workforce-state:/var/lib/webcandy
+    ports:
+      - "127.0.0.1:${WORKFORCE_HOST_PORT:-8790}:8790"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.workforce
+    command: [node, src/workforce/worker.mjs]
+    environment: *workforce-environment
+    volumes:
+      - workforce-state:/var/lib/webcandy
+    depends_on:
+      web:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, src/workforce/healthcheck.mjs, worker]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+volumes:
+  workforce-state:

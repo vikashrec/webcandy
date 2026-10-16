@@ -18,7 +18,7 @@ function status(message, error = false) { $('status').textContent = message; $('
 async function refresh() {
   state = await api('/api/v1/state');
   $('signin').hidden = true; $('workspace').hidden = false; $('logout').hidden = false;
-  $('identity').textContent = `${state.actor.email} · ${state.actor.role} · ${state.actor.tenant}`;
+  $('identity').textContent = `${state.actor.email} · ${state.actor.accessRole || state.actor.role} · ${state.organization.name}`;
   render();
 }
 $('login').addEventListener('submit', async event => {
@@ -34,6 +34,8 @@ const leadField = () => select('leadId', 'Opportunity', options('leads', 'title'
 const serviceField = () => select('serviceId', 'Service', options('catalog'));
 const buyerField = () => select('buyerId', 'Buyer', options('buyers'));
 const campaignField = () => select('campaignId', 'Campaign', options('campaigns'));
+const allocationField = () => select('allocationId', 'Allocation', options('allocations', 'leadId'));
+const teamField = () => ({...select('teamId', 'Team', [['', 'No team'], ...options('teams')]), required: false});
 const channelField = () => select('channel', 'Channel', [['email', 'Email'], ['whatsapp', 'WhatsApp']]);
 const purposeField = () => select('purpose', 'Purpose', [['requested_offer', 'Requested offer'], ['marketing', 'Marketing']]);
 function section(title) { const root = el('section'); root.append(el('h2', title)); $('content').append(root); return root; }
@@ -81,7 +83,9 @@ function table(title, rows, columns) {
 function render() {
   $('tabs').replaceChildren(); $('content').replaceChildren();
   const admin = state.actor.role === 'admin';
-  const tabs = admin ? ['Overview', 'Opportunities', 'Buyers', 'Catalog & offers', 'Campaigns', 'Governance', 'Reports'] : ['Overview', 'My opportunities', 'Conversions'];
+  const manager = admin || state.actor.accessRole !== 'buyer_team';
+  const tabs = admin ? ['Overview', 'Opportunities', 'Buyers', 'Catalog & offers', 'Campaigns', 'Governance', 'Organization', 'Deliveries', 'Follow-ups', 'Reports']
+    : ['Overview', 'My opportunities', 'Deliveries', 'Follow-ups', ...(manager ? ['Company & team'] : []), 'Conversions'];
   if (!tabs.includes(tab)) tab = 'Overview';
   for (const name of tabs) {
     const button = el('button', name); if (name === tab) button.setAttribute('aria-current', 'page');
@@ -91,7 +95,7 @@ function render() {
     const root = section(admin ? 'Admin workspace' : 'Buyer portal');
     root.append(el('p', admin ? 'Review permitted intake, qualify opportunities, match buyers and approve simulated campaigns. A different admin must approve a campaign.' : 'Your company’s allocated opportunities and synthetic conversion results. Other buyers’ inventories are not visible.'));
     const metrics = el('div', undefined, 'metrics');
-    for (const [label, count] of [['Visible opportunities', state.report.leads], ['Conversion events', state.report.conversions], ['Won opportunities', state.report.wins]]) {
+    for (const [label, count] of [['Visible opportunities', state.report.leads], ['Portal deliveries', state.report.deliveries], ['Open follow-ups', state.report.followupsOpen], ['Conversion events', state.report.conversions], ['Won opportunities', state.report.wins]]) {
       const tile = el('div', undefined, 'metric'); tile.append(el('strong', count), el('span', label)); metrics.append(tile);
     } root.append(metrics);
   }
@@ -125,6 +129,7 @@ function render() {
   if (tab === 'Catalog & offers') {
     form('Verify synthetic service', 'catalog/services', [field('name', 'Service name'), field('tags', 'Service tags', 'website'), field('price', 'Illustrative price', '500', 'number'), field('currency', 'Currency', 'USD'), field('evidence', 'Local review evidence', 'https://example.test/catalog-review', 'url'), field('validUntil', 'Verification expires (ISO timestamp)', future())], x => ({...x, price: Number(x.price), tags: x.tags.split(','), target: {}}));
     form('Draft offer', 'offers/draft', [leadField(), serviceField()]);
+    form('Approve offer for portal delivery', 'offers/approve', [select('offerId','Offer',options('offers','subject'))], x=>x, 'A different admin must approve the draft before an offer can be delivered through the buyer portal.');
     table('Locally verified catalog', state.catalog, ['id', 'name', 'price', 'currency', 'validUntil']);
     table('Offer drafts', state.offers, ['id', 'leadId', 'subject', 'body', 'status']);
   }
@@ -141,8 +146,42 @@ function render() {
     form('Record consent decision', 'consents', [leadField(), channelField(), purposeField(), select('status', 'Decision', [['granted', 'Granted'], ['withdrawn', 'Withdrawn'], ['denied', 'Denied']]), field('evidence', 'Consent evidence', 'https://example.test/consent-review', 'url'), field('expiresAt', 'Grant expires (ISO timestamp)', future())]);
     form('Suppress opportunity', 'suppressions', [leadField(), field('reason', 'Reason', 'Synthetic opt-out request')]);
     form('Purge expired data', 'retention/purge', [], () => ({}), 'Deletes expired opportunities and their dependent drafts and records. Keeps audit IDs and suppression fingerprints.');
+    form('Renew source permission', 'sources/renew', [select('sourceId','Source',options('sources')),field('evidence','Updated permission evidence','https://example.test/renewal','url'),field('permissionExpiresAt','New permission expiry',future())]);
+    form('Configure mock connector', 'connectors/configure', [select('sourceId','Collection source',state.sources.filter(s=>['official_api','mock','permitted_feed'].includes(s.type)).map(s=>[s.id,s.name])),
+      field('enabled','Enable synthetic collection','','checkbox'),field('externalId','Synthetic record ID','mock-demo-'+Date.now()),field('sourceUrl','Synthetic source URL','https://example.test/mock-'+Date.now(),'url'),field('title','Synthetic requirement','Need a company website')],
+      x=>({sourceId:x.sourceId,enabled:x.enabled==='on',records:[{externalId:x.externalId,sourceUrl:x.sourceUrl,title:x.title,tags:['website'],synthetic:true,remote:true,onsite:false}]}), 'Only the mock adapter is available. This form accepts synthetic opportunity fixtures and does not store provider credentials.');
+    form('Queue connector collection', 'connectors/queue', [select('connectorId','Connector',options('connectors')),field('dueAt','Collection time (ISO)',new Date(Date.now()+60000).toISOString())]);
+    form('Schedule retention purge', 'retention/schedule', [field('dueAt','Purge time (ISO)',future())]);
+    form('Run due mock jobs', 'jobs/run', [],()=>({}), 'The worker also executes due jobs automatically when running. Consent and source permissions are checked at execution.');
+    form('Retry failed job', 'jobs/retry', [select('jobId','Job',options('jobs','kind')),field('dueAt','Retry time (ISO)',new Date(Date.now()+60000).toISOString())]);
+    table('Configured connectors',state.connectors,['name','adapter','enabled','recordCount','externalEnabled']);
+    table('Job history',state.jobs,['id','kind','dueAt','status','attempts','result']);
     table('Permitted sources', state.sources, ['id', 'name', 'type', 'permissionExpiresAt', 'externalEnabled']);
     table('Audit trail', state.audit, ['seq', 'action', 'objectId', 'actor', 'at']);
+  }
+  if (tab === 'Organization' || tab === 'Company & team') {
+    if(admin) form('Update organization', 'organization', [field('name','Organization name',state.organization.name)]);
+    form('Create team','teams',[...(admin?[buyerField()]:[]),field('name','Team name')],x=>({...x,buyerId:x.buyerId||state.actor.buyer}));
+    form('Set team access','teams/update',[select('teamId','Team',options('teams')),select('active','Team access',[['true','Active'],['false','Inactive']])],x=>({...x,active:x.active==='true'}));
+    form('Create account','users',[field('email','Account email','','email'),field('password','Initial password (14+ characters)','','password'),
+      select('accessRole','Account role',admin?[['buyer_company','Company manager'],['buyer_team','Team member'],['admin','Tenant admin']]:[['buyer_team','Team member']]),
+      ...(admin?[buyerField()]:[]),teamField()],x=>({...x,buyerId:x.buyerId||state.actor.buyer}), 'Passwords are hashed and are not returned or written to audit logs. No invitation email is sent.');
+    form('Update account access','users/update',[select('userId','Account',options('users','email')),select('active','Account access',[['true','Active'],['false','Inactive']]),
+      {...field('password','New password (optional)','','password'),required:false}],x=>({userId:x.userId,active:x.active==='true',...(x.password?{password:x.password}:{})}));
+    form('Assign allocation to team','allocations/assign-team',[allocationField(),select('teamId','Assigned team',options('teams'))]);
+    table('Teams',state.teams,['name','buyerId','active']);
+    table('Accounts',state.users,['email','accessRole','buyerId','teamId','active']);
+  }
+  if (tab === 'Deliveries') {
+    if(admin) form('Deliver to buyer portal','deliveries',[allocationField(),{...select('offerId','Approved offer',[['','Lead only'],...options('offers','subject')]),required:false}],x=>({allocationId:x.allocationId,offerIds:x.offerId?[x.offerId]:[]}));
+    else form('Accept portal delivery','deliveries/accept',[select('deliveryId','Delivery',options('deliveries','leadId'))]);
+    table('Portal deliveries',state.deliveries,['id','leadId','status','deliveredAt','acceptedAt']);
+    if(!admin) table('Delivered offers',state.offers,['subject','body','price','currency','status']);
+  }
+  if (tab === 'Follow-ups') {
+    form('Create follow-up','followups',[allocationField(),field('title','Task','Review synthetic opportunity'),field('dueAt','Due time (ISO)',future())]);
+    form('Close follow-up','followups/close',[select('followupId','Follow-up',options('followups','title')),select('status','Outcome',[['completed','Completed'],['cancelled','Cancelled']])]);
+    table('Follow-up tasks',state.followups,['title','dueAt','status','overdue']);
   }
   if (tab === 'Conversions' || tab === 'Reports') {
     form('Record synthetic conversion', 'conversions/events', [select('allocationId', 'Allocation', options('allocations', 'leadId')), field('eventId', 'Unique event ID', 'event-' + Date.now()), select('type', 'Outcome', [['consultation', 'Consultation'], ['won', 'Won'], ['lost', 'Lost']]), field('value', 'Synthetic value', '1000', 'number'), field('currency', 'Currency', 'USD')], x => ({...x, value: Number(x.value)}));

@@ -1,0 +1,18 @@
+
+> test:workforce-containers
+> node --test e2e/workforce-containers.mjs
+
+✔ workforce container: non-root persistent web and worker complete approved synthetic campaign (15181.844756ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15284.601561
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

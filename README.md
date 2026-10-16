@@ -1,6 +1,12 @@
 # Facebook Job Search
 
-## Marketing Workforce development mission (WC-E2E-01)
+## Marketing Workforce development missions
+
+The [WEBCANDY-E2E-001 delivery](docs/execution/DELIVERY.md) extends the independently
+audited baseline with company/team accounts, approved portal deliveries, follow-ups,
+and durable mock jobs. See [current setup and workflows](docs/execution/DEVELOPMENT.md),
+[API additions](docs/execution/API.md), and the [requirement matrix](docs/execution/REQUIREMENTS.md).
+
 
 The [independent WC-QA-02 audit](docs/qa/WC-QA-02.md) records newly reproduced
 defects, fixes, fresh verification evidence and remaining architecture gaps.
@@ -24,7 +30,7 @@ Standalone experiment in `vikashrec/webcandy`, separate from Definition India an
 - Browser-local lead storage, duplicate post URL check, deletion and CSV export.
 
 ## Run
-Open `index.html` in a browser, or serve it with `python3 -m http.server 8000` and visit `http://localhost:8000`.
+Use the workforce server’s `/legacy` route for the original organizer. Do not run a static server over this checkout: ignored development databases and credentials must remain private.
 
 ## Not yet implemented
 The page does **not** scrape Facebook or automatically search every two hours. An unattended scheduler and an authorized data source are required for that. Facebook group/private content and profile contact information must not be harvested without authorization. Any future scheduled importer should deduplicate by post URL, keep source timestamps, respect access permissions and retain only voluntarily published business contact details.

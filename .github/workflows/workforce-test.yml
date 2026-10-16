@@ -1,7 +1,7 @@
 name: Workforce development regression
 on:
   push:
-    branches: [mission/wc-e2e-01, mission/wc-qa-02]
+    branches: [mission/wc-e2e-01, mission/wc-qa-02, mission/webcandy-e2e-001]
   pull_request:
 permissions:
   contents: read
@@ -30,6 +30,7 @@ jobs:
         run: |
           set -o pipefail
           npm run test:containers | tee test-results/containers.txt
+          npm run test:workforce-containers | tee test-results/workforce-containers.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

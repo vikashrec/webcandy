@@ -1,0 +1,28 @@
+
+> test:browser
+> node --test e2e/browser.mjs
+
+✔ browser E2E: admin intake → qualification → allocation → consent → offer → independent approval → simulation → buyer conversion (6605.618667ms)
+✔ browser: suppression removes buyer visibility (2312.205123ms)
+✔ browser: buyer sessions are isolated across companies and allocations within a tenant (1762.906776ms)
+✔ browser: malicious lead titles render as text with no executable DOM (1022.545448ms)
+✔ browser: source registration, service verification and global buyer targeting forms persist (1464.328818ms)
+✔ browser: failed login and signed-out API access do not expose tenant state (1643.112667ms)
+✔ browser: original organizer still saves, deduplicates, exports and deletes synthetic leads (1402.56054ms)
+✔ browser: original organizer handles corrupt storage and neutralizes CSV formulas (1602.78151ms)
+✔ QA browser: session expiry clears cached tenant data and returns to sign-in (1367.637259ms)
+✔ QA browser: buyer form supports global, subdivision and city targeting without silently dropping criteria (1427.102535ms)
+✔ browser: company provisions team, admin delivers approved offer, team acknowledges and closes follow-up (3132.240096ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24435.159317
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

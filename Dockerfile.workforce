@@ -1,0 +1,11 @@
+FROM node:24-alpine
+WORKDIR /app
+COPY package.json index.html ./
+COPY src/workforce/ ./src/workforce/
+COPY public/workforce/ ./public/workforce/
+RUN mkdir -p /var/lib/webcandy && chown -R node:node /app /var/lib/webcandy && chmod 700 /var/lib/webcandy
+USER node
+ENV NODE_ENV=development WORKFORCE_DB=/var/lib/webcandy/workforce.sqlite WORKFORCE_CREDENTIAL_FILE=/var/lib/webcandy/development-credentials.json WORKFORCE_BIND_HOST=0.0.0.0 WORKFORCE_ORIGIN=http://127.0.0.1:8790
+EXPOSE 8790
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s CMD ["node","src/workforce/healthcheck.mjs"]
+CMD ["node","src/workforce/server.mjs"]

@@ -2,9 +2,10 @@ import {randomUUID} from 'node:crypto';
 import {check, text, oneOf, httpsUrl, future, geography, target, matches, tags, fingerprint, currency} from './domain.mjs';
 import {MockOfficialConnector} from './connectors.mjs';
 import {SafeDevelopmentAI} from './ai.mjs';
+import {WorkspaceWorkflows} from './workspace.mjs';
 
-export class Workforce {
-  constructor(store, {clock = Date.now, ai} = {}) { this.store = store; this.clock = clock; this.ai = new SafeDevelopmentAI(ai); }
+export class Workforce extends WorkspaceWorkflows {
+  constructor(store, {clock = Date.now, ai} = {}) { super(); this.store = store; this.clock = clock; this.ai = new SafeDevelopmentAI(ai); }
   admin(actor) { check(actor.role === 'admin', 'Admin role required', 403); }
   get(actor, kind, id) { return this.store.get(actor.tenant, kind, text(id, 'id', 100)); }
   list(actor, kind) { return this.store.list(actor.tenant, kind); }
@@ -116,7 +117,7 @@ export class Workforce {
     const buyerId = actor.role === 'buyer' ? actor.buyer : input.buyerId;
     if (actor.role === 'buyer') check(!input.buyerId || input.buyerId === actor.buyer, 'Buyer scope denied', 403);
     const buyer = this.activeBuyer(actor, buyerId);
-    const allowed = new Set(this.list(actor, 'allocations').filter(a => a.buyerId === buyerId).map(a => a.leadId));
+    const allowed = new Set(this.visibleAllocations(actor).filter(a => a.buyerId === buyerId).map(a => a.leadId));
     return this.list(actor, 'leads').filter(lead => {
       if (actor.role === 'buyer' && !allowed.has(lead.id)) return false;
       try { this.eligible(actor, lead.id); } catch { return false; }
@@ -130,7 +131,7 @@ export class Workforce {
   leads(actor) {
     if (actor.role === 'admin') return this.list(actor, 'leads');
     this.activeBuyer(actor, actor.buyer);
-    const allocated = new Set(this.list(actor, 'allocations').filter(a => a.buyerId === actor.buyer).map(a => a.leadId));
+    const allocated = new Set(this.visibleAllocations(actor).map(a => a.leadId));
     return this.list(actor, 'leads').filter(l => {
       if (!allocated.has(l.id)) return false;
       try { this.eligible(actor, l.id); return true; } catch { return false; }
@@ -162,6 +163,7 @@ export class Workforce {
     this.admin(actor);
     const lead = this.eligible(actor, input.leadId);
     const buyer = this.activeBuyer(actor, input.buyerId);
+    const teamId = input.teamId ? this.team(actor, input.teamId, buyer.id).id : null;
     check(input.resale !== true, 'Resale is disabled; owner approval and verified rights required', 403);
     check(lead.ownership === 'tenant-owned', 'Client-owned lead distribution is blocked', 409);
     check(this.match(actor, {buyerId: buyer.id}).some(l => l.id === lead.id), 'Lead does not match buyer', 409);
@@ -172,7 +174,7 @@ export class Workforce {
     const existing = this.list(actor, 'allocations').filter(a => a.leadId === lead.id);
     check(!existing.some(a => a.buyerId === buyer.id), 'Already allocated', 409);
     check(!existing.length || (mode === 'shared' && existing.every(a => a.mode === 'shared')), 'Exclusive ownership conflict', 409);
-    return this.write(actor, 'allocations', {id: randomUUID(), leadId: lead.id, buyerId: buyer.id, mode, evidence,
+    return this.write(actor, 'allocations', {id: randomUUID(), leadId: lead.id, buyerId: buyer.id, teamId, mode, evidence,
       sharedRightsEvidence, resale: false, allocatedBy: actor.id, at: new Date(this.clock()).toISOString()}, 'lead.allocated');
   }
   campaign(actor, input) {
@@ -195,7 +197,10 @@ export class Workforce {
       this.canContact(actor, lead.id, campaign.channel, campaign.purpose);
       const service = this.get(actor, 'catalog', offer.serviceId);
       check(Date.parse(service.validUntil) > this.clock(), 'Catalog verification expired', 409);
-      check(this.list(actor, 'allocations').some(a => a.leadId === lead.id && this.get(actor, 'buyers', a.buyerId).active === true), 'Active buyer allocation required', 409);
+      check(this.list(actor, 'allocations').some(a => {
+        if (a.leadId !== lead.id || !this.get(actor, 'buyers', a.buyerId).active) return false;
+        try { if (a.teamId) this.team(actor, a.teamId, a.buyerId); return true; } catch { return false; }
+      }), 'Active buyer allocation required', 409);
     }
   }
   approve(actor, input) {
@@ -213,7 +218,9 @@ export class Workforce {
     const campaign = this.get(actor, 'campaigns', input.campaignId);
     check(campaign.status === 'approved', 'Approved campaign required', 409);
     this.campaignEligibility(actor, campaign);
-    return this.write(actor, 'campaigns', {...campaign, status: 'scheduled', scheduledAt: future(input.scheduledAt, this.clock())}, 'campaign.scheduled');
+    const scheduledAt = future(input.scheduledAt, this.clock());
+    this.queueJob(actor, 'campaign', campaign.id, Date.parse(scheduledAt));
+    return this.write(actor, 'campaigns', {...campaign, status: 'scheduled', scheduledAt}, 'campaign.scheduled');
   }
   dispatch(actor, input) {
     this.admin(actor);
@@ -225,17 +232,20 @@ export class Workforce {
       simulated: true, provider: 'mock', at: new Date(this.clock()).toISOString(), count: campaign.offerIds.length};
     this.write(actor, 'receipts', receipt, 'dispatch.simulated');
     this.write(actor, 'campaigns', {...campaign, status: 'simulated_complete'}, 'campaign.simulated_complete');
+    this.store.db.prepare("UPDATE jobs SET status='succeeded',result=? WHERE tenant=? AND kind='campaign' AND object_id=? AND status='queued'").run(JSON.stringify({provider:'mock',receiptId:receipt.id,count:receipt.count}), actor.tenant, campaign.id);
     return receipt;
   }
   cancel(actor, input) {
     this.admin(actor);
     const campaign = this.get(actor, 'campaigns', input.campaignId);
     check(['draft', 'approved', 'scheduled'].includes(campaign.status), 'Campaign cannot be cancelled', 409);
+    this.store.db.prepare("UPDATE jobs SET status='cancelled' WHERE tenant=? AND kind='campaign' AND object_id=? AND status='queued'").run(actor.tenant, campaign.id);
     return this.write(actor, 'campaigns', {...campaign, status: 'cancelled'}, 'campaign.cancelled');
   }
   conversion(actor, input) {
     const allocation = this.get(actor, 'allocations', input.allocationId);
     check(actor.role === 'admin' || allocation.buyerId === actor.buyer, 'Buyer scope denied', 403);
+    this.scopedAllocation(actor, allocation.id);
     this.activeBuyer(actor, allocation.buyerId);
     this.eligible(actor, allocation.leadId);
     check(Number.isFinite(input.value) && input.value >= 0 && input.value <= 1e9, 'Invalid conversion value');
@@ -252,11 +262,13 @@ export class Workforce {
       value: input.value, currency: input.currency, synthetic: true, at: new Date(this.clock()).toISOString()}, 'conversion.recorded');
   }
   report(actor) {
-    const conversions = this.list(actor, 'conversions').filter(c => actor.role === 'admin' || c.buyerId === actor.buyer);
+    const allocations = new Set(this.visibleAllocations(actor).map(a => a.id));
+    const conversions = this.list(actor, 'conversions').filter(c => allocations.has(c.allocationId));
     const totals = {};
     for (const c of conversions.filter(c => c.type === 'won')) totals[c.currency] = (totals[c.currency] || 0) + c.value;
     return {synthetic: true, leads: this.leads(actor).length, conversions: conversions.length,
       wins: conversions.filter(c => c.type === 'won').length, valuesByCurrency: totals,
+      deliveries: this.deliveries(actor).length, followupsOpen: this.followups(actor).filter(f => f.status === 'open').length,
       campaignsSimulated: actor.role === 'admin' ? this.list(actor, 'campaigns').filter(c => c.status === 'simulated_complete').length : undefined};
   }
   purge(actor) {
@@ -272,10 +284,11 @@ export class Workforce {
       }
       const offers = this.list(actor, 'offers').filter(o => o.leadId === lead.id).map(o => o.id);
       const campaigns = this.list(actor, 'campaigns').filter(c => c.offerIds.some(id => offers.includes(id))).map(c => c.id);
-      for (const kind of ['consents', 'allocations', 'conversions', 'offers']) {
+      for (const kind of ['consents', 'allocations', 'conversions', 'offers', 'deliveries', 'followups']) {
         for (const record of this.list(actor, kind).filter(r => r.leadId === lead.id)) this.store.remove(actor.tenant, kind, record.id);
       }
       for (const id of campaigns) this.store.remove(actor.tenant, 'campaigns', id);
+      for (const id of campaigns) this.store.db.prepare("DELETE FROM jobs WHERE tenant=? AND kind='campaign' AND object_id=?").run(actor.tenant, id);
       for (const receipt of this.list(actor, 'receipts').filter(r => campaigns.includes(r.campaignId))) this.store.remove(actor.tenant, 'receipts', receipt.id);
       for (const event of this.list(actor, 'conversions').filter(r => campaigns.includes(r.campaignId))) this.store.remove(actor.tenant, 'conversions', event.id);
       this.store.remove(actor.tenant, 'leads', lead.id);
@@ -286,13 +299,21 @@ export class Workforce {
     return {purged: expired.length};
   }
   snapshot(actor) {
-    const onlyOwn = kind => this.list(actor, kind).filter(r => actor.role === 'admin' || r.buyerId === actor.buyer);
+    const allocations = this.visibleAllocations(actor);
+    const allocationIds = new Set(allocations.map(a => a.id));
+    const deliveries = this.deliveries(actor);
+    const deliveredOfferIds = new Set(deliveries.flatMap(d => d.offerIds));
     return {actor, leads: this.leads(actor), buyers: this.list(actor, 'buyers').filter(b => actor.role === 'admin' || b.id === actor.buyer),
       catalog: this.list(actor, 'catalog').map(({evidence, verifiedBy, ...s}) => s),
       sources: actor.role === 'admin' ? this.list(actor, 'sources') : [],
-      offers: actor.role === 'admin' ? this.list(actor, 'offers') : [],
+      offers: actor.role === 'admin' ? this.list(actor, 'offers') : this.list(actor, 'offers').filter(o => deliveredOfferIds.has(o.id))
+        .map(({id,leadId,subject,body,price,currency,status,provider}) => ({id,leadId,subject,body,price,currency,status,provider})),
       campaigns: actor.role === 'admin' ? this.list(actor, 'campaigns') : [],
-      allocations: onlyOwn('allocations').map(({evidence, sharedRightsEvidence, ...a}) => a),
-      conversions: onlyOwn('conversions'), audit: actor.role === 'admin' ? this.store.events(actor.tenant) : [], report: this.report(actor)};
+      allocations: allocations.map(({evidence, sharedRightsEvidence, ...a}) => a), deliveries, followups: this.followups(actor),
+      organization: this.organization(actor), teams: this.teams(actor), users: this.users(actor),
+      connectors: actor.role === 'admin' ? this.list(actor, 'connectors').map(({records,...c}) => ({...c,recordCount:records.length})) : [],
+      jobs: actor.role === 'admin' ? this.store.db.prepare('SELECT id,kind,object_id AS objectId,due,status,attempts,result FROM jobs WHERE tenant=? ORDER BY due').all(actor.tenant)
+        .map(j => ({...j,dueAt:new Date(j.due).toISOString(),result:j.result?JSON.parse(j.result):null})) : [],
+      conversions: this.list(actor, 'conversions').filter(c => allocationIds.has(c.allocationId)), audit: actor.role === 'admin' ? this.store.events(actor.tenant) : [], report: this.report(actor)};
   }
 }
