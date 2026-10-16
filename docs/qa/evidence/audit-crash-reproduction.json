@@ -1,0 +1,6 @@
+{
+  "baselineServer": "30afb486",
+  "processExit": 1,
+  "expectedCrash": true,
+  "syntheticAuditError": true
+}

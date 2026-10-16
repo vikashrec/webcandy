@@ -1,0 +1,22 @@
+
+> test:browser
+> node --test e2e/browser.mjs
+
+✔ browser E2E: admin intake → qualification → allocation → consent → offer → independent approval → simulation → buyer conversion (4403.69192ms)
+✔ browser: suppression removes buyer visibility (1891.356714ms)
+✔ browser: buyer sessions are isolated across companies and allocations within a tenant (1246.830413ms)
+✔ browser: malicious lead titles render as text with no executable DOM (916.9564ms)
+✔ browser: source registration, service verification and global buyer targeting forms persist (1430.83219ms)
+✔ browser: failed login and signed-out API access do not expose tenant state (1319.856241ms)
+✔ browser: original organizer still saves, deduplicates, exports and deletes synthetic leads (1172.035729ms)
+✔ browser: original organizer handles corrupt storage and neutralizes CSV formulas (1316.362025ms)
+✔ QA browser: session expiry clears cached tenant data and returns to sign-in (2296.493121ms)
+✔ QA browser: buyer form supports global, subdivision and city targeting without silently dropping criteria (2708.674118ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19327.85869

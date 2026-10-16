@@ -1,0 +1,13 @@
+
+> test:containers
+> node --test e2e/containers.mjs
+
+✔ container: legacy Node 24 image supports authenticated ingest/dedupe/read as non-root without private image files (3872.424818ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3942.988703

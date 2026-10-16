@@ -1,0 +1,94 @@
+{
+  "mission": "WC-QA-02",
+  "baselineCommit": "30afb486e84d9bae6ddc782b7b9c761fc440deea",
+  "testedCodeCommit": "b327ecac6b554aded8e1670d9abfccde8b1538e5",
+  "baseline": {
+    "backend": {
+      "tests": 63,
+      "passed": 63,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "browser": {
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    }
+  },
+  "negativeProbes": {
+    "initialNewRegressions": {
+      "tests": 9,
+      "passed": 0,
+      "failed": 9,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "unsupportedSchema": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "cancelled": 0
+    }
+  },
+  "final": {
+    "backend": {
+      "tests": 82,
+      "passed": 82,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "browser": {
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "containers": {
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    }
+  },
+  "artifacts": [
+    {
+      "file": "final-backend.txt",
+      "sha256": "5d81e5228fb068d07b8c357268877108124439044ee711392d3e95c8ee8139e9"
+    },
+    {
+      "file": "final-browser.txt",
+      "sha256": "70ee3bea2a4342d906840a407c3c3c03263a367103a81a8efb01f9dc928606ae"
+    },
+    {
+      "file": "final-containers.txt",
+      "sha256": "ac5be42bcc3275e2e14d8e5d32179260a03a863609399cdf96683fa05ccc1a05"
+    },
+    {
+      "file": "docker-smoke.json",
+      "sha256": "211659f0b9c6e5e9a3dd5448cf33879db21ded5c09a95bdcd16c716e69cc62f8"
+    },
+    {
+      "file": "restart-smoke.json",
+      "sha256": "17ab30fd8c01b6421ce9ec08722d7fee2f1f118433fb082a84ddbc80be91f6ba"
+    },
+    {
+      "file": "audit-crash-reproduction.json",
+      "sha256": "fa918171765eec437b966c9a46e59690cbd57495caf5bd926f488934a6ddb87c"
+    },
+    {
+      "file": "browser-defect-reproduction.json",
+      "sha256": "a20dab79885e70a8b9eb47c75d3d26b82488b7c5d928a3b1c081108ff8f14340"
+    },
+    {
+      "file": "type-reproduction.json",
+      "sha256": "2ad30bf2fcd577192a3598124533ec402c75a391ae0a51babb544e7eee99b17b"
+    }
+  ]
+}
