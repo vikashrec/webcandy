@@ -4,9 +4,15 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "search": "node scripts/search.mjs"
+    "search": "node scripts/search.mjs",
+    "workforce:seed": "node src/workforce/seed.mjs",
+    "workforce:start": "node src/workforce/server.mjs",
+    "test:browser": "node --test e2e/browser.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2"
   }
 }
