@@ -4,6 +4,14 @@ import {mkdirSync, chmodSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {check, fingerprint} from './domain.mjs';
 
+export function verifySchema(db, {allowEmpty = false} = {}) {
+  const tables = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+  if (allowEmpty && tables.length === 0) return;
+  check(tables.some(t => t.name === 'schema_version'), 'Unsupported database schema');
+  const versions = db.prepare('SELECT version FROM schema_version').all();
+  check(versions.length === 1 && versions[0].version === 1, 'Unsupported database schema');
+}
+
 export function passwordHash(password, salt = randomBytes(16).toString('hex')) {
   return `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
 }
@@ -18,6 +26,8 @@ export class Store {
     this.file = file === ':memory:' ? file : resolve(file);
     if (file !== ':memory:') mkdirSync(dirname(this.file), {recursive: true, mode: 0o700});
     this.db = new DatabaseSync(this.file);
+    try { verifySchema(this.db, {allowEmpty: true}); }
+    catch (error) { this.db.close(); throw error; }
     if (file !== ':memory:') chmodSync(this.file, 0o600);
     this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY CHECK(version=1));
@@ -61,7 +71,10 @@ export class Store {
     this.db.prepare('INSERT INTO audit(tenant,actor,action,object_id,at,detail) VALUES(?,?,?,?,?,?)').run(actor.tenant, actor.id, action, id, new Date().toISOString(), JSON.stringify(detail));
   }
   events(tenant) { return this.db.prepare('SELECT seq,actor,action,object_id AS objectId,at,detail FROM audit WHERE tenant=? ORDER BY seq').all(tenant).map(r => ({...r, detail: JSON.parse(r.detail)})); }
-  principal(id) { return this.db.prepare('SELECT id,tenant,role,buyer,email FROM principals WHERE id=? AND active=1').get(id); }
+  principal(id) {
+    return this.db.prepare(`SELECT p.id,p.tenant,p.role,p.buyer,p.email FROM principals p WHERE p.id=? AND p.active=1
+      AND (p.role='admin' OR EXISTS(SELECT 1 FROM records r WHERE r.tenant=p.tenant AND r.kind='buyers' AND r.id=p.buyer AND json_extract(r.data,'$.active')=1))`).get(id);
+  }
   authenticate(token, now) {
     const hash = fingerprint(token);
     const row = this.db.prepare('SELECT principal FROM api_keys WHERE hash=? UNION ALL SELECT principal FROM sessions WHERE hash=? AND expires>? LIMIT 1').get(hash, hash, now);
@@ -71,7 +84,7 @@ export class Store {
     const row = this.db.prepare('SELECT * FROM principals WHERE email=? AND active=1').get(email);
     // Equal-cost password hashing for unknown users; no email enumeration.
     const dummy = '00000000000000000000000000000000:' + '0'.repeat(128);
-    check(passwordMatches(password, row?.password || dummy) && row, 'Invalid credentials', 401);
+    check(passwordMatches(password, row?.password || dummy) && row && this.principal(row.id), 'Invalid credentials', 401);
     const token = randomBytes(32).toString('hex');
     this.db.prepare('DELETE FROM sessions WHERE expires<=?').run(now);
     this.db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(fingerprint(token), row.id, now + 8 * 3600_000);

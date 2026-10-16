@@ -1,12 +1,18 @@
 import {randomUUID} from 'node:crypto';
-import {check, text, oneOf, httpsUrl, future, geography, target, matches, tags, fingerprint, MockAI} from './domain.mjs';
+import {check, text, oneOf, httpsUrl, future, geography, target, matches, tags, fingerprint, currency} from './domain.mjs';
 import {MockOfficialConnector} from './connectors.mjs';
+import {SafeDevelopmentAI} from './ai.mjs';
 
 export class Workforce {
-  constructor(store, {clock = Date.now, ai = new MockAI()} = {}) { this.store = store; this.clock = clock; this.ai = ai; }
+  constructor(store, {clock = Date.now, ai} = {}) { this.store = store; this.clock = clock; this.ai = new SafeDevelopmentAI(ai); }
   admin(actor) { check(actor.role === 'admin', 'Admin role required', 403); }
   get(actor, kind, id) { return this.store.get(actor.tenant, kind, text(id, 'id', 100)); }
   list(actor, kind) { return this.store.list(actor.tenant, kind); }
+  activeBuyer(actor, id) {
+    const buyer = this.get(actor, 'buyers', id);
+    check(buyer.active === true, 'Buyer is inactive', 409);
+    return buyer;
+  }
   write(actor, kind, item, action) {
     this.store.put(actor.tenant, kind, item);
     this.store.audit(actor, action, item.id);
@@ -37,7 +43,8 @@ export class Workforce {
     const sourceUrl = httpsUrl(input.sourceUrl);
     const externalId = text(input.externalId, 'externalId');
     const key = fingerprint(sourceUrl);
-    check(!this.list(actor, 'suppressions').some(s => s.key === key), 'Source is suppressed', 409);
+    const sourceKey = fingerprint(source.id + '\n' + externalId);
+    check(!this.list(actor, 'suppressions').some(s => s.key === key || s.sourceKey === sourceKey), 'Source is suppressed', 409);
     const duplicate = this.list(actor, 'leads').find(l => l.sourceUrl === sourceUrl || (l.sourceId === source.id && l.externalId === externalId));
     if (duplicate) return {created: false, lead: duplicate};
     const capturedAt = new Date(this.clock()).toISOString();
@@ -50,11 +57,11 @@ export class Workforce {
     check(typeof input.remote === 'boolean' && typeof input.onsite === 'boolean' && (input.remote || input.onsite), 'Specify remote/on-site eligibility');
     const lead = {id: randomUUID(), sourceId: source.id, sourceUrl, externalId,
       title: text(input.title, 'title', 1200), tags: tags(input.tags), budget,
-      location: geography(input.location), serviceLocation: geography(input.serviceLocation || input.location),
+      location: geography(input.location), serviceLocation: geography(input.serviceLocation ?? input.location),
       remote: input.remote, onsite: input.onsite, capturedAt, occurredAt: new Date(occurredAt).toISOString(),
       expiresAt: new Date(this.clock() + retentionDays * 86400_000).toISOString(),
       synthetic: true, stage: 'discovered', suppressed: false,
-      ownership: oneOf(input.ownership || 'tenant-owned', ['tenant-owned', 'client-owned'], 'ownership'),
+      ownership: oneOf(input.ownership ?? 'tenant-owned', ['tenant-owned', 'client-owned'], 'ownership'),
       distribution: 'internal-only', resaleAllowed: false};
     this.write(actor, 'leads', lead, 'lead.intake');
     return {created: true, lead};
@@ -70,12 +77,16 @@ export class Workforce {
     this.admin(actor);
     const lead = this.eligible(actor, input.leadId);
     const qualification = {...this.ai.qualify(lead), at: new Date(this.clock()).toISOString()};
+    if (qualification.fallback) this.store.audit(actor, 'ai.fallback', lead.id, {operation: 'qualify'});
     return this.write(actor, 'leads', {...lead, qualification, stage: 'qualified'}, 'lead.qualified');
   }
   consent(actor, input) {
     this.admin(actor);
-    const lead = this.eligible(actor, input.leadId);
+    const lead = this.get(actor, 'leads', input.leadId);
     const status = oneOf(input.status, ['granted', 'withdrawn', 'denied'], 'consent status');
+    // Revocation is allowed even when acquisition permission/retention expired
+    // or the lead has already been suppressed. A new grant still fails closed.
+    if (status === 'granted') this.eligible(actor, lead.id);
     const channel = oneOf(input.channel, ['email', 'whatsapp'], 'channel');
     const purpose = oneOf(input.purpose, ['requested_offer', 'marketing'], 'purpose');
     const entry = {id: randomUUID(), leadId: lead.id, status, channel, purpose,
@@ -93,7 +104,8 @@ export class Workforce {
     const lead = this.get(actor, 'leads', input.leadId);
     text(input.reason, 'reason', 300);
     // Keep only an irreversible URL fingerprint in the durable re-intake tombstone.
-    this.write(actor, 'suppressions', {id: randomUUID(), key: fingerprint(lead.sourceUrl), at: new Date(this.clock()).toISOString()}, 'lead.suppressed');
+    this.write(actor, 'suppressions', {id: randomUUID(), key: fingerprint(lead.sourceUrl),
+      sourceKey: fingerprint(lead.sourceId + '\n' + lead.externalId), at: new Date(this.clock()).toISOString()}, 'lead.suppressed');
     return this.write(actor, 'leads', {...lead, suppressed: true}, 'lead.suppression_applied');
   }
   createBuyer(actor, input) {
@@ -103,7 +115,7 @@ export class Workforce {
   match(actor, input) {
     const buyerId = actor.role === 'buyer' ? actor.buyer : input.buyerId;
     if (actor.role === 'buyer') check(!input.buyerId || input.buyerId === actor.buyer, 'Buyer scope denied', 403);
-    const buyer = this.get(actor, 'buyers', buyerId);
+    const buyer = this.activeBuyer(actor, buyerId);
     const allowed = new Set(this.list(actor, 'allocations').filter(a => a.buyerId === buyerId).map(a => a.leadId));
     return this.list(actor, 'leads').filter(lead => {
       if (actor.role === 'buyer' && !allowed.has(lead.id)) return false;
@@ -117,6 +129,7 @@ export class Workforce {
   }
   leads(actor) {
     if (actor.role === 'admin') return this.list(actor, 'leads');
+    this.activeBuyer(actor, actor.buyer);
     const allocated = new Set(this.list(actor, 'allocations').filter(a => a.buyerId === actor.buyer).map(a => a.leadId));
     return this.list(actor, 'leads').filter(l => {
       if (!allocated.has(l.id)) return false;
@@ -126,7 +139,7 @@ export class Workforce {
   createService(actor, input) {
     this.admin(actor);
     check(Number.isFinite(input.price) && input.price >= 0 && input.price <= 1e9, 'Valid catalog price required');
-    check(/^[A-Z]{3}$/.test(input.currency), 'Currency required');
+    currency(input.currency);
     return this.write(actor, 'catalog', {id: randomUUID(), name: text(input.name, 'name'), tags: tags(input.tags),
       price: input.price, currency: input.currency, evidence: httpsUrl(input.evidence), verifiedBy: actor.id,
       verifiedAt: new Date(this.clock()).toISOString(), validUntil: future(input.validUntil, this.clock()),
@@ -139,14 +152,16 @@ export class Workforce {
     check(Date.parse(service.validUntil) > this.clock(), 'Catalog verification expired', 409);
     check(lead.tags.some(t => service.tags.includes(t)) && matches(lead, service.target), 'Service does not match', 409);
     check(lead.qualification, 'Qualification required', 409);
+    const draft = this.ai.draft(lead, service);
+    if (draft.fallback) this.store.audit(actor, 'ai.fallback', lead.id, {operation: 'draft'});
     return this.write(actor, 'offers', {id: randomUUID(), leadId: lead.id, serviceId: service.id,
-      ...this.ai.draft(lead, service), status: 'draft_pending_approval', version: 1,
+      ...draft, status: 'draft_pending_approval', version: 1,
       createdBy: actor.id, at: new Date(this.clock()).toISOString()}, 'offer.drafted');
   }
   allocate(actor, input) {
     this.admin(actor);
     const lead = this.eligible(actor, input.leadId);
-    const buyer = this.get(actor, 'buyers', input.buyerId);
+    const buyer = this.activeBuyer(actor, input.buyerId);
     check(input.resale !== true, 'Resale is disabled; owner approval and verified rights required', 403);
     check(lead.ownership === 'tenant-owned', 'Client-owned lead distribution is blocked', 409);
     check(this.match(actor, {buyerId: buyer.id}).some(l => l.id === lead.id), 'Lead does not match buyer', 409);
@@ -171,13 +186,16 @@ export class Workforce {
     return this.write(actor, 'campaigns', campaign, 'campaign.drafted');
   }
   campaignEligibility(actor, campaign) {
+    const recipients = new Set();
     for (const id of campaign.offerIds) {
       const offer = this.get(actor, 'offers', id);
       const lead = this.eligible(actor, offer.leadId);
+      check(!recipients.has(lead.id), 'Duplicate campaign recipient', 409);
+      recipients.add(lead.id);
       this.canContact(actor, lead.id, campaign.channel, campaign.purpose);
       const service = this.get(actor, 'catalog', offer.serviceId);
       check(Date.parse(service.validUntil) > this.clock(), 'Catalog verification expired', 409);
-      check(this.list(actor, 'allocations').some(a => a.leadId === lead.id), 'Allocation required', 409);
+      check(this.list(actor, 'allocations').some(a => a.leadId === lead.id && this.get(actor, 'buyers', a.buyerId).active === true), 'Active buyer allocation required', 409);
     }
   }
   approve(actor, input) {
@@ -203,7 +221,8 @@ export class Workforce {
     const campaign = this.get(actor, 'campaigns', input.campaignId);
     check(campaign.status === 'scheduled' && Date.parse(campaign.scheduledAt) <= this.clock(), 'Scheduled campaign is not due', 409);
     this.campaignEligibility(actor, campaign);
-    const receipt = {id: randomUUID(), campaignId: campaign.id, simulated: true, provider: 'mock', at: new Date(this.clock()).toISOString(), count: campaign.offerIds.length};
+    const receipt = {id: randomUUID(), campaignId: campaign.id, channel: campaign.channel, purpose: campaign.purpose,
+      simulated: true, provider: 'mock', at: new Date(this.clock()).toISOString(), count: campaign.offerIds.length};
     this.write(actor, 'receipts', receipt, 'dispatch.simulated');
     this.write(actor, 'campaigns', {...campaign, status: 'simulated_complete'}, 'campaign.simulated_complete');
     return receipt;
@@ -217,9 +236,10 @@ export class Workforce {
   conversion(actor, input) {
     const allocation = this.get(actor, 'allocations', input.allocationId);
     check(actor.role === 'admin' || allocation.buyerId === actor.buyer, 'Buyer scope denied', 403);
+    this.activeBuyer(actor, allocation.buyerId);
     this.eligible(actor, allocation.leadId);
     check(Number.isFinite(input.value) && input.value >= 0 && input.value <= 1e9, 'Invalid conversion value');
-    check(/^[A-Z]{3}$/.test(input.currency), 'Currency required');
+    currency(input.currency);
     const eventId = text(input.eventId, 'eventId');
     check(!this.list(actor, 'conversions').some(c => c.eventId === eventId), 'Duplicate conversion event', 409);
     const campaignId = input.campaignId || null;
@@ -243,6 +263,13 @@ export class Workforce {
     this.admin(actor);
     const expired = this.list(actor, 'leads').filter(l => Date.parse(l.expiresAt) <= this.clock());
     for (const lead of expired) {
+      // Upgrade a pre-QA URL-only tombstone while the source identity still
+      // exists. Already-purged legacy identities cannot be reconstructed.
+      if (lead.suppressed) {
+        const tombstone = this.list(actor, 'suppressions').find(s => s.key === fingerprint(lead.sourceUrl));
+        if (tombstone && !tombstone.sourceKey) this.write(actor, 'suppressions', {...tombstone,
+          sourceKey: fingerprint(lead.sourceId + '\n' + lead.externalId)}, 'suppression.identity_backfilled');
+      }
       const offers = this.list(actor, 'offers').filter(o => o.leadId === lead.id).map(o => o.id);
       const campaigns = this.list(actor, 'campaigns').filter(c => c.offerIds.some(id => offers.includes(id))).map(c => c.id);
       for (const kind of ['consents', 'allocations', 'conversions', 'offers']) {

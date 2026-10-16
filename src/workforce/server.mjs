@@ -30,9 +30,9 @@ async function readBody(req) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'JSON object required');
   return {input, raw};
 }
-export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit = 150} = {}) {
+export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit = 150, ai} = {}) {
   check(store, 'Store required');
-  const service = new Workforce(store, {clock});
+  const service = new Workforce(store, {clock, ai});
   const limits = new Map();
   const server = createServer(async (req, res) => {
     let requestActor;
@@ -59,7 +59,9 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
       }
       if (req.method === 'GET' && path === '/health') {
         const ok = store.db.prepare('PRAGMA quick_check').get().quick_check === 'ok';
-        return json(ok ? 200 : 503, {ok, database: ok ? 'ok' : 'failed', schema: 1, mode: 'synthetic-development', externalDispatch: false});
+        const initialized = store.db.prepare("SELECT count(*) AS n FROM principals WHERE active=1 AND role='admin'").get().n > 0;
+        return json(ok && initialized ? 200 : 503, {ok: ok && initialized, database: ok ? 'ok' : 'failed', initialized,
+          schema: 1, mode: 'synthetic-development', externalDispatch: false});
       }
       const port = server.address().port;
       const allowedOrigins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
@@ -123,13 +125,19 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
         check(!input.tenant && !input.tenantId, 'Tenant is derived from authentication', 403);
         const key = req.headers['idempotency-key'];
         check(typeof key === 'string' && /^[A-Za-z0-9_-]{8,100}$/.test(key), 'Idempotency-Key (8–100 characters) required');
-        const hash = fingerprint(path + '\n' + raw);
+        const method = actions.get(path.slice(7));
+        // A cached success is never authorization. Evaluate current role before
+        // consulting cache, and bind cached results to the current buyer context.
+        if (!['match', 'conversion'].includes(method)) service.admin(actor);
+        const hash = fingerprint(JSON.stringify([path, raw, actor.role, actor.buyer]));
         const result = store.transaction(() => {
-          const previous = store.db.prepare('SELECT hash,result FROM idempotency WHERE tenant=? AND actor=? AND key=?').get(actor.tenant, actor.id, key);
+          // Matching is a query: suppression and allocation changes must be visible
+          // even if a client reuses its POST key.
+          const previous = method !== 'match' && store.db.prepare('SELECT hash,result FROM idempotency WHERE tenant=? AND actor=? AND key=?').get(actor.tenant, actor.id, key);
           if (previous) { check(previous.hash === hash, 'Idempotency key conflict', 409); return JSON.parse(previous.result); }
-          const value = service[actions.get(path.slice(7))](actor, input);
+          const value = service[method](actor, input);
           // Purge must never retain a response containing expired records.
-          if (path !== '/api/v1/retention/purge') store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?,?)').run(actor.tenant, actor.id, key, hash, JSON.stringify(value));
+          if (!['purge', 'match'].includes(method)) store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?,?)').run(actor.tenant, actor.id, key, hash, JSON.stringify(value));
           return value;
         });
         return json(200, result);
@@ -138,7 +146,10 @@ export function makeServer({store, clock = Date.now, webhookKeys = {}, rateLimit
     } catch (error) {
       // Internal errors never disclose SQL, payloads, credentials or filesystem paths.
       const status = error instanceof Fault ? error.status : 500;
-      if (requestActor && [403, 409].includes(status)) store.audit(requestActor, 'security.denied', '-', {status});
+      if (requestActor && [403, 409].includes(status)) {
+        try { store.audit(requestActor, 'security.denied', '-', {status}); }
+        catch { return json(503, {error: 'Audit service unavailable'}); }
+      }
       if (!res.headersSent) return json(status, {error: status === 500 ? 'Internal service error' : error.message});
       res.end();
     }

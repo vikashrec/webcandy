@@ -1,7 +1,7 @@
 name: Workforce development regression
 on:
   push:
-    branches: [mission/wc-e2e-01]
+    branches: [mission/wc-e2e-01, mission/wc-qa-02]
   pull_request:
 permissions:
   contents: read
@@ -17,8 +17,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm test
-      - run: npm run test:browser
+      - shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          npm test | tee test-results/backend.txt
+      - shell: bash
+        run: |
+          set -o pipefail
+          npm run test:browser | tee test-results/browser.txt
+      - shell: bash
+        run: |
+          set -o pipefail
+          npm run test:containers | tee test-results/containers.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -23,7 +23,7 @@ npm run workforce:start
 The browser suite uses `/usr/bin/chromium` when present. Otherwise install the
 Playwright browser with `npx playwright install chromium`, or set `CHROMIUM_PATH`
 to your installed executable. CI installs browser OS dependencies too. The
-container tests launch Chromium without its process sandbox; this is a test-runner
+browser tests in this cloud container launch Chromium without its process sandbox; this is a test-runner
 constraint, not permission to render untrusted websites. Network routes in the
 browser tests allow only the local test server.
 
@@ -31,6 +31,24 @@ There is no compilation step: the server and portal are native JavaScript module
 `npm test` runs the legacy tests and new database, HTTP, domain and workflow tests.
 `npm run test:browser` runs a separate real Chromium suite. Tests use isolated
 temporary/in-memory databases and newly generated synthetic principals.
+
+For the separately audited **legacy** Docker foundations, run
+`npm run test:containers` with a working local Docker daemon and Compose plugin.
+It builds the Node 24 image, validates Compose, starts two isolated containers on
+random loopback ports, checks authenticated ingest/dedupe/read and removes its own
+containers, volume, test image tag and temporary environment file. Registry pulls
+are ordinary development image downloads. It does not deploy the workforce.
+`.dockerignore` excludes private runtime data, credentials, Git metadata and caches.
+Docker CLI state defaults to ignored `private-data/docker`; QA_DOCKER_CONFIG can
+select another writable config directory. No home directory override is needed.
+
+The buyer form now supports blank inclusions for global targeting, country,
+subdivision and city inclusion/exclusion and lead versus service location. Multiple
+regions and jurisdiction denials remain available through the API. After a 401,
+the portal clears cached tenant content and returns to sign-in. A failing or
+malformed AI adapter uses an explicitly marked development mock fallback; it does
+not bypass consent, matching or campaign approval. Read the independent
+WC-QA-02 audit in `docs/qa/WC-QA-02.md` for current evidence and remaining gaps.
 
 Seed once for each new development database. It refuses to reset existing tenants
 or overwrite credentials. The default database is `private-data/workforce.sqlite`.

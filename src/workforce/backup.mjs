@@ -3,7 +3,7 @@ import {readFile, writeFile, copyFile, mkdir, chmod, unlink} from 'node:fs/promi
 import {constants} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {Store} from './database.mjs';
+import {Store, verifySchema} from './database.mjs';
 import {check, fingerprint} from './domain.mjs';
 
 export function validateSnapshot(file) {
@@ -11,7 +11,7 @@ export function validateSnapshot(file) {
   try {
     check(db.prepare('PRAGMA integrity_check').get().integrity_check === 'ok', 'Backup integrity failed');
     check(db.prepare('PRAGMA foreign_key_check').all().length === 0, 'Backup foreign keys invalid');
-    check(db.prepare('SELECT version FROM schema_version').get()?.version === 1, 'Unsupported backup schema');
+    verifySchema(db);
     const tenants = db.prepare('SELECT count(*) AS n FROM tenants').get().n;
     check(tenants > 0, 'Empty backup');
     return {tenants, records: db.prepare('SELECT count(*) AS n FROM records').get().n};

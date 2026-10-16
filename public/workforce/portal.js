@@ -6,6 +6,11 @@ const future = () => new Date(Date.now() + 86400000).toISOString();
 async function api(path, input) {
   const response = await fetch(path, {method: input ? 'POST' : 'GET', headers: input ? {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()} : {}, body: input ? JSON.stringify(input) : undefined});
   const data = await response.json();
+  if (response.status === 401) {
+    state = undefined;
+    $('workspace').hidden = true; $('logout').hidden = true; $('signin').hidden = false;
+    $('content').replaceChildren(); $('tabs').replaceChildren(); $('identity').textContent = '';
+  }
   if (!response.ok) throw Error(data.error || 'Request failed');
   return data;
 }
@@ -23,6 +28,7 @@ $('login').addEventListener('submit', async event => {
 $('logout').onclick = async () => { try { await api('/auth/logout', {}); location.reload(); } catch (error) { status(error.message, true); } };
 const options = (kind, label = 'name') => (state[kind] || []).map(x => [x.id, x[label] || x.id]);
 const field = (name, label, value = '', type = 'text', choices) => ({name, label, value, type, choices});
+const optional = (name, label, value = '') => ({...field(name, label, value), required: false});
 const select = (name, label, choices) => field(name, label, '', 'select', choices);
 const leadField = () => select('leadId', 'Opportunity', options('leads', 'title'));
 const serviceField = () => select('serviceId', 'Service', options('catalog'));
@@ -42,7 +48,7 @@ function form(title, action, fields, transform = x => x, description) {
       input = el('select');
       for (const [value, name] of f.choices) { const option = el('option', name); option.value = value; input.append(option); }
     } else { input = el('input'); input.type = f.type; input.value = f.type === 'checkbox' ? 'on' : f.value; }
-    input.name = f.name; input.required = f.type !== 'checkbox'; input.id = 'field-' + crypto.randomUUID();
+    input.name = f.name; input.required = f.required ?? f.type !== 'checkbox'; input.id = 'field-' + crypto.randomUUID();
     label.htmlFor = input.id; wrapper.append(label, input); node.append(wrapper);
   }
   const button = el('button', title); node.append(button);
@@ -100,7 +106,17 @@ function render() {
     table('My allocations', state.allocations, ['id', 'leadId', 'mode']);
   }
   if (tab === 'Buyers') {
-    form('Create buyer', 'buyers', [field('name', 'Company name'), field('tags', 'Service tags', 'website'), field('country', 'Include country code', 'IN'), field('exclude', 'Exclude country code (use NONE)', 'NONE'), select('remote', 'Eligibility', [['any', 'Any'], ['remote', 'Remote'], ['onsite', 'On-site']])], x => ({name: x.name, tags: x.tags.split(','), target: {include: [{country: x.country}], exclude: x.exclude === 'NONE' ? [] : [{country: x.exclude}], remote: x.remote}}));
+    form('Create buyer', 'buyers', [field('name', 'Company name'), field('tags', 'Service tags', 'website'),
+      optional('country', 'Include country code', 'IN'), optional('state', 'Include subdivision ID'), optional('city', 'Include city ID'),
+      optional('exclude', 'Exclude country code (use NONE)', 'NONE'), optional('excludeState', 'Exclude subdivision ID'), optional('excludeCity', 'Exclude city ID'),
+      select('locationKind', 'Match location', [['lead', 'Opportunity location'], ['service', 'Service delivery location']]),
+      select('remote', 'Eligibility', [['any', 'Any'], ['remote', 'Remote'], ['onsite', 'On-site']])], x => {
+        const region = {country: x.country, state: x.state, city: x.city};
+        const excluded = {country: x.exclude === 'NONE' ? '' : x.exclude, state: x.excludeState, city: x.excludeCity};
+        return {name: x.name, tags: x.tags.split(','), target: {
+          include: Object.values(region).some(Boolean) ? [region] : [],
+          exclude: Object.values(excluded).some(Boolean) ? [excluded] : [], remote: x.remote, locationKind: x.locationKind}};
+      }, 'Leave all inclusion fields blank for global targeting. Subdivision and city IDs require their parent country and subdivision.');
     form('Find buyer matches', 'buyers/match', [buyerField()]);
     form('Allocate opportunity', 'allocations', [leadField(), buyerField(), select('mode', 'Ownership mode', [['exclusive', 'Exclusive'], ['shared', 'Shared']]), field('evidence', 'Allocation rights evidence', 'https://example.test/allocation-review', 'url'), field('sharedRightsEvidence', 'Shared rights evidence (only used for shared)', 'https://example.test/shared-rights-review', 'url')]);
     table('Buyer profiles', state.buyers, ['id', 'name', 'tags', 'target']);

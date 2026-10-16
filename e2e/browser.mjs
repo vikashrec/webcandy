@@ -151,3 +151,28 @@ test('browser: original organizer handles corrupt storage and neutralizes CSV fo
   assert.match(csv, /"'=1\+1"/);
   assert.doesNotMatch(csv, /\r\n"=1\+1"/);
 });
+
+test('QA browser: session expiry clears cached tenant data and returns to sign-in', async t => {
+  const f = await browserFixture(t); prepared(f);
+  await f.login(); await f.tab('Opportunities');
+  assert.match(await f.page.locator('#content').innerText(), /Need a company website/);
+  f.now.value += 9 * 3600000;
+  await f.form('Qualify opportunity').getByRole('button', {name: 'Qualify opportunity'}).click();
+  await f.page.getByRole('status').filter({hasText: 'Authentication required'}).waitFor();
+  assert.equal(await f.page.locator('#workspace').isVisible(), false);
+  assert.equal(await f.page.locator('#content').innerText(), '');
+  assert.equal(await f.page.locator('#identity').innerText(), '');
+  assert.equal(await f.page.getByRole('button', {name: 'Sign in', exact: true}).isVisible(), true);
+});
+
+test('QA browser: buyer form supports global, subdivision and city targeting without silently dropping criteria', async t => {
+  const f = await browserFixture(t); await f.login(); await f.tab('Buyers');
+  await f.form('Create buyer').getByLabel('Company name').fill('Synthetic global buyer');
+  await f.form('Create buyer').getByLabel('Include country code', {exact: true}).fill(''); await f.submit('Create buyer');
+  assert.deepEqual(f.store.list('alpha', 'buyers').at(-1).target.include, []);
+  await f.form('Create buyer').getByLabel('Company name').fill('Synthetic Patna buyer');
+  await f.form('Create buyer').getByLabel('Include subdivision ID').fill('IN-BR');
+  await f.form('Create buyer').getByLabel('Include city ID').fill('patna'); await f.submit('Create buyer');
+  const target = f.store.list('alpha', 'buyers').at(-1).target;
+  assert.equal(target.include[0].country, 'IN'); assert.equal(target.include[0].state, 'IN-BR'); assert.equal(target.include[0].city, 'patna');
+});

@@ -35,6 +35,14 @@ Signed synthetic webhook intake returns 201. Error responses do not include SQL,
 secrets or input payloads. The local rate limiter permits 150 requests per minute
 per IP (10 login attempts in an independent bucket); it is not a distributed control.
 
+WC-QA-02 correction: authorization is checked before cached responses, which are
+also bound to role and buyer assignment. Matching always recomputes current
+eligibility, even if its POST key is reused. Pre-QA cache keys may return 409 after
+upgrading; inspect current state before retrying with a new key. Health returns
+503 if the DB has no active admin; an intact empty DB is not initialized. Unknown
+schema versions fail startup without being stamped as version 1. A secondary
+denial-audit failure returns 503 rather than terminating the HTTP server.
+
 ## Routes
 
 | Method and route | Role | Purpose |
@@ -125,6 +133,12 @@ Qualification uses `{ "leadId": "..." }`. Consent requires leadId, channel
 server records the verifying admin and time. The latest decision in that scope
 wins. It is a synthetic review ledger, not proof of a real person's opt-in.
 Suppression uses leadId and reason; a URL fingerprint remains after retention.
+New suppressions also fingerprint (sourceId, externalId), so moving the same source
+record to another URL cannot bypass its tombstone after purge. Pre-QA tombstones
+are backfilled before purging a still-retained suppressed lead. Already purged
+legacy identities cannot be recovered from their URL hash alone. Withdrawal and
+denial can be recorded for a retained lead even when suppressed or expired;
+grants still require eligibility.
 
 Catalog requires name, tags, numeric nonnegative price, uppercase currency,
 HTTPS evidence, future validUntil and optional target. Caller-supplied `verified`
@@ -144,6 +158,10 @@ and future scheduledAt. Dispatch requires campaignId and mode=`mock`; it checks
 due time, consent, suppression, retention, source permission and catalog expiry
 again. Completion is `simulated_complete`, with a simulated receipt. There is no
 worker that automatically runs scheduled records and no external send adapter.
+Duplicate lead recipients via different offer IDs are rejected. At least one
+active buyer allocation must still exist at execution. Receipts include channel
+and purpose; they remain generic simulator records, not provider API acceptance.
+Inactive buyers cannot authenticate, see inventory, match or receive new allocations.
 
 Conversion requires allocationId, unique tenant eventId, type
 (`consultation|won|lost`), value and currency. Optional campaignId must reference
@@ -173,6 +191,12 @@ with explicit mock provenance. They make no paid or free API requests and cannot
 dispatch a campaign. Real Mr. India/AI adapters require owner approval, documented
 tenant-bound service authentication, minimized prompts, output validation,
 timeouts, rate/cost limits and mocked contract tests before adding credentials.
+WC-QA-02 adds a SafeDevelopmentAI wrapper: synchronous mock outputs are validated,
+system IDs and catalog prices cannot be overwritten, and inputs are cloned.
+Exceptions, malformed results and unsupported Promise results produce an explicitly
+marked deterministic mock fallback plus an audit marker. Exception details are
+not saved. This is development fallback; no live provider, network timeout/circuit
+breaker or asynchronous queue integration is implemented.
 
 Legacy `/api/leads` and `/api/ingest` are separate single-tenant scripts and are
 not exposed by this workforce server. Do not route their shared-token endpoints

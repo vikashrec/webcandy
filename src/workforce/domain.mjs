@@ -9,6 +9,7 @@ export function text(value, name, max = 200) {
   return value.trim();
 }
 export function oneOf(value, values, name) { check(values.includes(value), `Invalid ${name}`); return value; }
+export function currency(value) { check(typeof value === 'string' && /^[A-Z]{3}$/.test(value), 'Use three-letter currency'); return value; }
 export const fingerprint = value => createHash('sha256').update(value).digest('hex');
 export function httpsUrl(value) {
   let url;
@@ -26,6 +27,8 @@ export function future(value, now) {
 }
 export function geography(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Location object required');
+  for (const key of ['country', 'state', 'city', 'language', 'timezone', 'currency'])
+    check(input[key] === undefined || typeof input[key] === 'string', `Location ${key} must be a string`);
   const country = String(input.country || '').toUpperCase();
   const state = String(input.state || '').toUpperCase();
   const city = String(input.city || '').toLowerCase();
@@ -36,9 +39,8 @@ export function geography(input = {}) {
   try { Intl.getCanonicalLocales(language); } catch { throw new Fault(400, 'Invalid language tag'); }
   const timezone = input.timezone || 'UTC';
   try { new Intl.DateTimeFormat('en', {timeZone: timezone}); } catch { throw new Fault(400, 'Invalid timezone'); }
-  const currency = input.currency || 'USD';
-  check(/^[A-Z]{3}$/.test(currency), 'Use three-letter currency');
-  return {country, state, city, language, timezone, currency};
+  const currencyCode = currency(input.currency ?? 'USD');
+  return {country, state, city, language, timezone, currency: currencyCode};
 }
 export function target(input = {}) {
   check(input && typeof input === 'object' && !Array.isArray(input), 'Target object required');
@@ -49,8 +51,8 @@ export function target(input = {}) {
   const denyCountries = input.denyCountries || [];
   check(Array.isArray(denyCountries) && denyCountries.every(x => /^[A-Z]{2}$/.test(x)), 'Invalid jurisdiction exclusions');
   return {include: regions('include'), exclude: regions('exclude'), denyCountries,
-    remote: oneOf(input.remote || 'any', ['any', 'remote', 'onsite'], 'remote eligibility'),
-    locationKind: oneOf(input.locationKind || 'lead', ['lead', 'service'], 'location kind')};
+    remote: oneOf(input.remote ?? 'any', ['any', 'remote', 'onsite'], 'remote eligibility'),
+    locationKind: oneOf(input.locationKind ?? 'lead', ['lead', 'service'], 'location kind')};
 }
 export function matches(lead, criteria) {
   const loc = criteria.locationKind === 'service' ? lead.serviceLocation : lead.location;

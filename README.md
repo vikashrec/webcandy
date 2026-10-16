@@ -2,6 +2,9 @@
 
 ## Marketing Workforce development mission (WC-E2E-01)
 
+The [independent WC-QA-02 audit](docs/qa/WC-QA-02.md) records newly reproduced
+defects, fixes, fresh verification evidence and remaining architecture gaps.
+
 A separate synthetic multi-tenant development application is now available on the
 mission branch. Start with [development setup and Admin/Buyer walkthrough](docs/mission/DEVELOPMENT.md),
 [API and connector contracts](docs/mission/API.md), and the
